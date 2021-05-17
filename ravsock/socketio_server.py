@@ -6,9 +6,9 @@ import threading
 import numpy as np
 import socketio
 from aiohttp import web
-from ravcom import ravcom
 from ravcom import OpStatus, ClientOpMapping, ClientOpMappingStatus, GraphStatus, RavQueue, QUEUE_HIGH_PRIORITY, \
     QUEUE_LOW_PRIORITY, QUEUE_COMPUTING
+from ravcom import ravdb
 from ravop.core import Op as RavOp, Data as RavData
 from sqlalchemy import or_
 
@@ -60,32 +60,32 @@ async def connect(sid, environ):
         client_type = "ravjs"
 
     # Create client
-    obj = ravcom.create_client(client_id=sid, connected_at=datetime.datetime.now(), status="connected",
-                               type=client_type)
+    obj = ravdb.create_client(client_id=sid, connected_at=datetime.datetime.now(), status="connected",
+                              type=client_type)
 
 
 @sio.event
 async def disconnect(sid):
     logger.debug("Disconnected:{}".format(sid))
 
-    client = ravcom.get_client_by_sid(sid=sid)
+    client = ravdb.get_client_by_sid(sid=sid)
     if client is not None:
-        ravcom.update_client(client, status="disconnected", disconnected_at=datetime.datetime.now())
+        ravdb.update_client(client, status="disconnected", disconnected_at=datetime.datetime.now())
 
         if client.type == "ravjs":
             # Get ops which were assigned to this
-            ops = ravcom.session.query(ClientOpMapping).filter(ClientOpMapping.client_id ==
-                                                               sid).filter(or_(ClientOpMapping.status
-                                                                               == ClientOpMappingStatus.SENT.value,
-                                                                               ClientOpMapping.status ==
-                                                                               ClientOpMappingStatus.ACKNOWLEDGED,
-                                                                               ClientOpMapping.status ==
-                                                                               ClientOpMappingStatus.COMPUTING.value)).all()
+            ops = ravdb.session.query(ClientOpMapping).filter(ClientOpMapping.client_id ==
+                                                              sid).filter(or_(ClientOpMapping.status
+                                                                              == ClientOpMappingStatus.SENT.value,
+                                                                              ClientOpMapping.status ==
+                                                                              ClientOpMappingStatus.ACKNOWLEDGED,
+                                                                              ClientOpMapping.status ==
+                                                                              ClientOpMappingStatus.COMPUTING.value)).all()
 
             print(ops)
             # Set those ops to pending
             for op in ops:
-                ravcom.update_op(op, status=ClientOpMappingStatus.NOT_COMPUTED.value)
+                ravdb.update_op(op, status=ClientOpMappingStatus.NOT_COMPUTED.value)
 
 
 """
@@ -118,12 +118,12 @@ async def inform_server(sid, data):
         data_id = data['op_id']
 
         # Emit op to the client
-        clients = ravcom.get_available_clients()
+        clients = ravdb.get_available_clients()
         for client in clients:
             await sio.emit("ping", data=None, namespace="/ravjs", room=client.client_id)
     else:
         # Emit op to the client
-        clients = ravcom.get_available_clients()
+        clients = ravdb.get_available_clients()
         print(clients)
         for client in clients:
             await sio.emit("ping", data=None, namespace="/ravjs", room=client.client_id)
@@ -163,7 +163,7 @@ async def acknowledge_op(sid, message):
     data = json.loads(message)
     op_id = data['op_id']
     print("Op id", op_id)
-    op_found = ravcom.get_op(op_id=op_id)
+    op_found = ravdb.get_op(op_id=op_id)
 
     if op_found is not None:
         # Update client op mapping - Status to acknowledged
@@ -187,37 +187,37 @@ async def op_completed(sid, data):
         data = RavData(value=np.array(data['result']), dtype="ndarray")
 
         # Update op
-        ravcom.update_op(op._op_db, outputs=json.dumps([data.id]), status=OpStatus.COMPUTED.value)
+        ravdb.update_op(op._op_db, outputs=json.dumps([data.id]), status=OpStatus.COMPUTED.value)
 
         # Update client op mapping
         update_client_op_mapping(op_id, sid=sid, status=ClientOpMappingStatus.COMPUTED.value)
 
-        db_op = ravcom.get_op(op_id=op_id)
+        db_op = ravdb.get_op(op_id=op_id)
         if db_op.graph_id is not None:
-            last_op = ravcom.get_last_graph_op(graph_id=db_op.graph_id)
+            last_op = ravdb.get_last_graph_op(graph_id=db_op.graph_id)
 
             if last_op.id == op_id:
-                ravcom.update(name="graph", id=db_op.graph_id, status=GraphStatus.COMPUTED.value)
+                ravdb.update(name="graph", id=db_op.graph_id, status=GraphStatus.COMPUTED.value)
     else:
         # Update op
-        ravcom.update_op(op._op_db, outputs=None, status=OpStatus.FAILED.value, message=data['result'])
+        ravdb.update_op(op._op_db, outputs=None, status=OpStatus.FAILED.value, message=data['result'])
 
         # Update client op mapping
         update_client_op_mapping(op_id, sid=sid, status=ClientOpMappingStatus.FAILED.value)
 
-        op_status = ravcom.get_op_status_final(op_id=op_id)
+        op_status = ravdb.get_op_status_final(op_id=op_id)
 
         if op_status == "failed":
-            db_op = ravcom.get_op(op_id=op_id)
-            ravcom.update(name="graph", id=db_op.graph_id, status=GraphStatus.FAILED.value)
+            db_op = ravdb.get_op(op_id=op_id)
+            ravdb.update(name="graph", id=db_op.graph_id, status=GraphStatus.FAILED.value)
 
-            graph_ops = ravcom.get_graph_ops(graph_id=db_op.graph_id)
+            graph_ops = ravdb.get_graph_ops(graph_id=db_op.graph_id)
             for graph_op in graph_ops:
-                ravcom.update_op(op=graph_op, status=OpStatus.FAILED.value)
+                ravdb.update_op(op=graph_op, status=OpStatus.FAILED.value)
 
                 mappings = graph_op.mappings
                 for mapping in mappings:
-                    ravcom.update_client_op_mapping(mapping.id, status=ClientOpMappingStatus.FAILED.value)
+                    ravdb.update_client_op_mapping(mapping.id, status=ClientOpMappingStatus.FAILED.value)
 
     # Emit another op to this client
     await emit_op(sid)
@@ -254,16 +254,16 @@ async def emit_op(sid, op=None):
     await sio.emit("op", payload, namespace="/ravjs", room=sid)
 
     # Store the mapping in database
-    client = ravcom.get_client_by_sid(sid)
+    client = ravdb.get_client_by_sid(sid)
     ravop = RavOp(id=op.id)
-    ravcom.update_op(ravop._op_db, status=OpStatus.COMPUTING.value)
-    mapping = ravcom.create_client_op_mapping(client_id=client.id, op_id=op.id, sent_time=datetime.datetime.now(),
-                                              status=ClientOpMappingStatus.SENT.value)
+    ravdb.update_op(ravop._op_db, status=OpStatus.COMPUTING.value)
+    mapping = ravdb.create_client_op_mapping(client_id=client.id, op_id=op.id, sent_time=datetime.datetime.now(),
+                                             status=ClientOpMappingStatus.SENT.value)
     logger.debug("Mapping created:{}".format(mapping))
 
     if op.graph_id is not None:
         # if db.get_first_graph_op(graph_id=op.graph_id).id == op.id:
-        ravcom.update(name="graph", id=op.graph_id, status=GraphStatus.COMPUTING.value)
+        ravdb.update(name="graph", id=op.graph_id, status=GraphStatus.COMPUTING.value)
 
     timer = threading.Timer(2.0, abc, [mapping.id])
     timer.start()
@@ -274,7 +274,7 @@ def abc(args):
 
 
 def find_op():
-    op = ravcom.get_incomplete_op()
+    op = ravdb.get_incomplete_op()
 
     if op is not None:
         return op
@@ -300,23 +300,23 @@ def find_op():
                 if op_id is None:
                     continue
 
-                op = ravcom.get_op(op_id=op_id)
+                op = ravdb.get_op(op_id=op_id)
 
                 if op.graph_id is not None:
-                    if ravcom.get_graph(op.graph_id).status == "failed":
+                    if ravdb.get_graph(op.graph_id).status == "failed":
                         # Change this op's status to failed
                         if op.status != "failed":
-                            ravcom.update_op(op, status=OpStatus.FAILED.value)
+                            ravdb.update_op(op, status=OpStatus.FAILED.value)
                             continue
 
-                    elif ravcom.get_graph(op.graph_id).status == "computed":
+                    elif ravdb.get_graph(op.graph_id).status == "computed":
                         if index == 0:
                             q1.pop()
                         elif index == 1:
                             q2.pop()
                         continue
 
-                r = ravcom.get_op_readiness(op)
+                r = ravdb.get_op_readiness(op)
                 if r == "ready":
                     if index == 0:
                         q1.pop()
@@ -332,7 +332,7 @@ def find_op():
 
                     # Change this op's status to failed
                     if op.status != "failed":
-                        ravcom.update_op(op, status=OpStatus.FAILED.value)
+                        ravdb.update_op(op, status=OpStatus.FAILED.value)
 
             return None
 
@@ -388,10 +388,10 @@ def create_payload(op):
 
 
 def update_client_op_mapping(op_id, sid, status):
-    client = ravcom.get_client_by_sid(sid)
-    mapping = ravcom.find_client_op_mapping(client.id, op_id)
-    ravcom.update_client_op_mapping(mapping.id, status=status,
-                                    response_time=datetime.datetime.now())
+    client = ravdb.get_client_by_sid(sid)
+    mapping = ravdb.find_client_op_mapping(client.id, op_id)
+    ravdb.update_client_op_mapping(mapping.id, status=status,
+                                   response_time=datetime.datetime.now())
 
 
 #
