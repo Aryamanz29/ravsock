@@ -3,5 +3,5 @@ async-timeout==3.0.1
 python-engineio==3.13.0
 python-socketio==4.5.1
 numpy==1.20.1
-git+git://github.com/ravenprotocol/ravcom.git
-git+git://github.com/ravenprotocol/ravop.git
+git+git://github.com/ravenprotocol/ravcom.git@0.1-alpha
+git+git://github.com/ravenprotocol/ravop.git@0.1-alpha
