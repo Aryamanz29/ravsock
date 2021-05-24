@@ -382,7 +382,14 @@ def create_payload(op):
     payload['values'] = values
     payload['op_type'] = op.op_type
     payload['operator'] = op.operator
-    payload['params'] = json.loads(op.params)
+
+    params = dict()
+    for key, value in json.loads(op.params).items():
+        if type(value).__name__ == 'int':
+            op = RavOp(id=value)
+            params[key] = op.output
+
+    payload['params'] = params
 
     return json.dumps(payload)
 
