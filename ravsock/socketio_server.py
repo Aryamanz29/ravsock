@@ -391,6 +391,8 @@ def create_payload(op):
                 params[key] = op1.output.tolist()
             else:
                 params[key] = op1.output
+        elif type(value).__name__ == 'str':
+            params[key] = value
 
     payload['params'] = params
 
