@@ -386,8 +386,11 @@ def create_payload(op):
     params = dict()
     for key, value in json.loads(op.params).items():
         if type(value).__name__ == 'int':
-            op = RavOp(id=value)
-            params[key] = op.output
+            op1 = RavOp(id=value)
+            if op1.output_dtype == "ndarray":
+                params[key] = op1.output.tolist()
+            else:
+                params[key] = op1.output
 
     payload['params'] = params
 
