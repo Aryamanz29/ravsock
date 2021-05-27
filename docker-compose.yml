@@ -1,0 +1,35 @@
+version: '3.3'
+services:
+  db:
+    image: mysql:5.7
+    restart: always
+    environment:
+      MYSQL_DATABASE: 'rdf'
+      MYSQL_USER: 'user'
+      MYSQL_PASSWORD: 'password'
+      MYSQL_ROOT_PASSWORD: 'password'
+      MYSQL_TCP_PORT: 3307
+    ports:
+      - '3307:3306'
+    volumes:
+      - my-db:/var/lib/mysql
+  socket_server:
+    build: .
+    environment:
+      - RDF_DATABASE_URI=mysql://user:password@db:3307/rdf?host=db?port=3307
+      - RDF_REDIS_HOST=redis
+      - RDF_REDIS_PORT=6380
+      - RDF_REDIS_DB=0
+    ports:
+      - "9999:9999"
+    depends_on:
+      - "db"
+      - "redis"
+  redis:
+    image: redis:latest
+    restart: always
+    command: ["redis-server", "--bind", "redis", "--port", "6380"]
+    ports:
+      - "6380:6379"
+volumes:
+  my-db:
