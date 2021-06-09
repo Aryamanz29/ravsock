@@ -2,6 +2,7 @@ import datetime
 import json
 import logging.handlers
 import threading
+import time
 
 import numpy as np
 import socketio
@@ -12,7 +13,7 @@ from ravcom import ravdb
 from ravop.core import Op as RavOp, Data as RavData
 from sqlalchemy import or_
 
-from .config import RAVSOCK_LOG_FILE
+from .config import RAVSOCK_LOG_FILE, WAIT_INTERVAL_TIME
 
 # Set up a specific logger with our desired output level
 logger = logging.getLogger(__name__)
@@ -42,6 +43,21 @@ queue_computing = RavQueue(name=QUEUE_COMPUTING)
 async def index(request):
     with open('ravclient/index.html') as f:
         return web.Response(text=f.read(), content_type='text/html')
+
+
+def distribute_ops():
+    clients = ravdb.get_available_clients()
+    logger.debug("Available client;{}".format(str(clients)))
+    for client in clients:
+        sio.emit("ping", data=None, namespace="/ravjs", room=client.client_id)
+
+
+def wait_interval():
+    distribute_ops()
+    threading.Timer(WAIT_INTERVAL_TIME, wait_interval).start()
+
+
+wait_interval()
 
 
 """
