@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='ravsock',
-    version='0.1-alpha',
+    version='0.2-alpha',
     packages=find_packages(),
     install_requires=[
         "numpy==1.20.1",
@@ -12,7 +12,6 @@ setup(
         "python-socketio==4.5.1"
     ],
     dependency_links=[
-        "https://github.com/ravenprotocol/ravcom.git@0.1-alpha",
         "https://github.com/ravenprotocol/ravop.git@0.1-alpha"
     ]
 )

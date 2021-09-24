@@ -2,15 +2,12 @@ import datetime
 import json
 import logging.handlers
 import threading
-import time
 
 import numpy as np
 import socketio
 from aiohttp import web
-from ravcom import OpStatus, ClientOpMapping, ClientOpMappingStatus, GraphStatus, RavQueue, QUEUE_HIGH_PRIORITY, \
-    QUEUE_LOW_PRIORITY, QUEUE_COMPUTING
-from ravcom import ravdb
-from ravop.core import Op as RavOp, Data as RavData
+from ravop import OpStatus, ClientOpMapping, ClientOpMappingStatus, GraphStatus, RavQueue, QUEUE_HIGH_PRIORITY, \
+    QUEUE_LOW_PRIORITY, QUEUE_COMPUTING, ravdb, Op as RavOp, Data as RavData
 from sqlalchemy import or_
 
 from .config import RAVSOCK_LOG_FILE, WAIT_INTERVAL_TIME
@@ -38,46 +35,56 @@ queue_low_priority = RavQueue(name=QUEUE_LOW_PRIORITY)
 queue_computing = RavQueue(name=QUEUE_COMPUTING)
 
 
-# we can define aiohttp endpoints just as we normally
-# would with no change
-async def index(request):
-    with open('ravclient/index.html') as f:
-        return web.Response(text=f.read(), content_type='text/html')
-
-
-def distribute_ops():
+async def distribute_ops():
     clients = ravdb.get_available_clients()
     logger.debug("Available client;{}".format(str(clients)))
     for client in clients:
-        sio.emit("ping", data=None, namespace="/ravjs", room=client.client_id)
+        await sio.emit("ping", data=None, namespace="/ravjs", room=client.client_id)
 
 
-def wait_interval():
-    distribute_ops()
-    threading.Timer(WAIT_INTERVAL_TIME, wait_interval).start()
+async def wait_interval():
+    await distribute_ops()
+    threading.Timer(WAIT_INTERVAL_TIME, await wait_interval).start()
 
 
-wait_interval()
-
+# wait_interval()
 
 """
 Connect and disconnect events
 """
 
+num_clients = 0
+
 
 @sio.event
 async def connect(sid, environ):
     logger.debug("Connected:{} {}".format(sid, environ))
-
+    global num_clients
+    print("Connected")
     client_type = None
     if 'ravop' in environ['QUERY_STRING']:
         client_type = "ravop"
     elif 'ravjs' in environ['QUERY_STRING']:
         client_type = "ravjs"
+    else:
+        if 'raven-federated' in environ['HTTP_CLIENT_NAME']:
+            client_type = "raven-federated"
+            print('Federated Learning Initialized for Client')
+        elif 'analytics' in environ['HTTP_CLIENT_NAME']:
+            client_type = "analytics"
+            print('Analytics Initialized for Client')
+            num_clients += 1
 
     # Create client
-    obj = ravdb.create_client(client_id=sid, connected_at=datetime.datetime.now(), status="connected",
-                              type=client_type)
+    if client_type == "raven-federated":
+        obj = ravdb.create_client(client_id=sid, connected_at=datetime.datetime.now(), status="connected",
+                                  reporting="READY", type=client_type)
+
+    # Create client
+    # ravdb.create_client(client_id=sid, connected_at=datetime.datetime.now(), status="connected",
+    # type=client_type)
+
+    print("Connected")
 
 
 @sio.event
@@ -412,7 +419,7 @@ def create_payload(op):
 
     payload['params'] = params
 
-    return json.dumps(payload)
+    return payload
 
 
 def update_client_op_mapping(op_id, sid, status):
@@ -422,211 +429,113 @@ def update_client_op_mapping(op_id, sid, status):
                                    response_time=datetime.datetime.now())
 
 
-#
-# @sio.on('update_server', namespace="/ravop")
-# async def receive_op(sid):
-#     print("\nOp Received...", sid)
-#
-#     client_found = search_client()
-#     op_found = search_pending_op()
-#
-#     if op_found is None or client_found is None:
-#         return
-#
-#     print("Op:", op_found.id, )
-#     print("Client:", client_found.id, client_found.client_id)
-#
-#     # Create payload
-#     inputs = json.loads(op_found.inputs)
-#
-#     payload = create_payload(op_found.id, inputs, op_found.op_type, op_found.operator)
-#
-#     await sio.emit("op", payload, namespace="/ravjs", room=client_found.client_id)
-#
-#     # db.update(op_found, client_id=client_found.client_id, status=OpStatus.COMPUTING.value)
-#
-#
-# # @sio.on('result', namespace="/ravjs")
-# # async def receive_result(sid, message):
-# #     print("\nResult received...")
-# #     print(message)
-# #     data = json.loads(message)
-# #
-# #     op_id = data['op_id']
-# #
-# #     print(op_id, type(data['result']), data['operator'], data['result'])
-# #
-# #     op = RavOp(id=op_id)
-# #     data = RavData(value=np.array(data['result']), dtype="ndarray")
-# #
-# #     # op = db.session.query(Op).get(op_id)
-# #     # data = db.create_data_complete(data=np.array(data['result']), data_type="ndarray")
-# #     print(json.dumps([data.id]))
-# #     db.update_op(op._op_db, outputs=json.dumps([data.id]), status=OpStatus.COMPUTED.value)
-# #
-# #     """
-# #     Send a pending op
-# #     """
-# #     op_found = search_pending_op()
-# #
-# #     if op_found is None:
-# #         return
-# #
-# #     # Create payload
-# #     inputs = json.loads(op_found.inputs)
-# #
-# #     payload = create_payload(op_found.id, inputs, op_found.op_type, op_found.operator)
-# #
-# #     await sio.emit("op", payload, namespace="/ravjs", room=sid)
-# #
-# #     # db.update(op_found, client_id=sid, status=OpStatus.COMPUTING.value)
-# #
-# #     # # Save results
-# #     # # If compute completed
-# #     # op_id = data.get("op_id", None)
-# #     # if op_id is not None and data.get('result', None) is not None:
-# #     #     print("Result dict:", data)
-# #     #
-# #     #     save_result(op_id, result=data['result'])
-# #     #
-# #     #     r.set(op_id + ":result", "Done")
-# #     #
-# #     #     r.lrem("ops_computing", op_id)
-# #     #     r.rpush("ops_computed", op_id)
-# #     #
-# #     #     await sio.emit("result", {"op_id": op_id}, namespace="/ravop")
-# #     #
-# #     # # Send an op to this client if there is a pending op
-# #     # pending_op = get_pending_op(r)
-# #     # if pending_op is not None:
-# #     #     await sio.emit("op", pending_op, namespace="/ravjs", room=sid)
-# #     #
-# #     #     r.lpop("ops_pending")
-# #     #     r.rpush("ops_computing", pending_op['op_id'])
-#
-#
-# # async def second_c(*data):
-# #     print(data)
-#
-#
-# # @sio.on("callback", namespace="/ravop")
-# # async def my_callback(sid, data):
-# #     print(sid)
-# #     await sio.emit("your", {}, room=sid, callback=second_c)
-# #     return ["received"]
-#
-#
-# @sio.on('ask_op', namespace="/ravjs")
-# async def ask_op(sid, message):
-#     print("get_op", message)
-#
-#     op_found = search_pending_op()
-#     client_found = search_client()
-#
-#     if op_found is None or client_found is None:
-#         print("Op or client not found")
-#         return
-#
-#     # Create payload
-#     inputs = json.loads(op_found.inputs)
-#
-#     payload = create_payload(op_found.id, inputs, op_found.op_type, op_found.operator)
-#
-#     print("Emitting op")
-#     print("sid", client_found.client_id, payload)
-#
-#     await sio.emit("op", payload, namespace="/ravjs", room=client_found.client_id)
-#
-#
-# def search_pending_op():
-#     """
-#     Search for an op which is pending
-#     """
-#     graphs = db.session.query(Graph).filter(Graph.status == "active")
-#     graph_id = None
-#     for graph in graphs:
-#         graph_id = graph.id
-#         break
-#
-#     if graph_id is not None:
-#         ops = db.session.query(Op).filter(Op.graph_id == graph_id).filter(Op.status == "pending").filter(
-#             Op.client_id is None)
-#         # .order_by(desc(Op.created_at))
-#
-#         print("Ops:", ops)
-#         op_found = None
-#         for op in ops:
-#             inputs = json.loads(op.inputs)
-#
-#             not_computed = []
-#             for op_id in inputs:
-#                 if db.session.query(Op).get(op_id).status != "computed":
-#                     not_computed.append(op_id)
-#
-#             if len(not_computed) == 0:
-#                 op_found = op
-#                 break
-#     return op_found
-#     # return None
-#
-#
-# def search_client():
-#     clients = db.session.query(Client).filter(Client.status == "connected", Client.type == "ravjs").order_by(
-#         desc(Client.created_at))
-#
-#     client_found = None
-#     for client in clients:
-#         op = db.session.query(Op).filter(Op.status == "computing", Op.client_id == client.id).first()
-#         if op is None:
-#             client_found = client
-#             break
-#
-#     return client_found
-#
-#
-# def create_payload(op_id1, inputs, op_type, operator):
-#     """
-#     Create a payload
-#     """
-#     values = []
-#
-#     for op_id in inputs:
-#         op = RavOp(id=op_id)
-#         if op.output_dtype == "ndarray":
-#             values.append(op.output.tolist())
-#         else:
-#             values.append(op.output)
-#
-#         # data_id = json.loads(db.session.query(Op).get(op_id).outputs)[0]
-#         #         # print("Data id:", op_id, data_id)
-#         #         # data = db.session.query(Data).get(data_id)
-#         #         # file_path = data.file_path
-#         #         # print(file_path)
-#         #
-#         # if data.type == "ndarray":
-#         #
-#         #
-#         # with open(file_path, "rb") as f:
-#         #     a = json.load(f)
-#         #     print("Data:", a, type(a), data.type)
-#         #     if data.type == "integer":
-#         #         values.append(a)
-#         #     elif data.type == "ndarray":
-#         #         a = np.array(a)
-#         #         print(type(a))
-#         #         values.append(a.tolist())
-#         #     else:
-#         #         print("Value:", a)
-#         #         values.append(a)
-#
-#     payload = dict()
-#     payload['op_id'] = op_id1
-#     payload['values'] = values
-#     payload['op_type'] = op_type
-#     payload['operator'] = operator
-#
-#     return json.dumps(payload)
+@sio.on("client_status", namespace="/raven-federated")
+async def get_client_status(sid, client_status):
+    print("client_status:{}".format(client_status))
+    if client_status != {}:
+        ravdb.update_federated_op(status=client_status['status'])
+    op = find_op()
+    logger.debug(op)
+    if op is None:
+        print("None")
+        return None
+    # Create payload
+    payload = create_payload(op)
+    # Updating client-op mapping
+    client_op_mapping = ravdb.create_client_op_mapping(client_id=sid, op_id=op.id,
+                                                       status=ClientOpMappingStatus.SENT.value)
+    # update_client_op_mapping(op.id, sid, ClientOpMappingStatus.ACKNOWLEDGED.value)
+    # Emit op
+    logger.debug("Emitting op:{}, {}".format(sid, payload))
+    return payload
 
 
-# We bind our aiohttp endpoint to our app router
-app.router.add_get('/', index)
+@sio.on('op_completed', namespace="/raven-federated")
+async def op_completed(sid, data):
+    # Save the results
+    logger.debug("\nResult received {}".format(data))
+    # data = json.loads(data)
+    print(data)
+    op_id = data['op_id']
+    logger.debug("{} {} {} {}".format(op_id, type(data['result']), data['operator'], data['result']))
+
+
+"""
+Federated Analytics
+"""
+
+global_mean = 0
+global_min = float('inf')
+global_max = float('-inf')
+global_variance = 0
+global_standard_deviation = 0
+n1 = 0
+n2 = 0
+
+
+@sio.on("fed_analytics", namespace="/analytics")
+async def get_fed_analytics(sid, client_params):
+    global global_mean, global_min, global_max, global_variance, global_standard_deviation, num_clients, n1, n2
+    if num_clients == 1:
+        n1 = client_params['size']
+        global_mean = client_params['Average']
+        global_variance = client_params['Variance']
+    else:
+        n2 = client_params['size']
+        m1 = global_mean
+        m2 = client_params['Average']
+        global_variance = (n1 * global_variance + n2 * client_params['Variance']) / (n1 + n2) + (
+                (n1 * n2 * (m1 - m2) ** 2) / (n1 + n2) ** 2)
+        global_mean = global_mean * (n1) / (n1 + n2) + (client_params['Average'] * n2) / (n1 + n2)
+    global_min = min(global_min, client_params['Minimum'])
+    global_max = max(global_max, client_params['Maximum'])
+    global_standard_deviation = np.sqrt(global_variance)
+    print("Global Mean: {}".format(global_mean))
+    print("Global Min: {}".format(global_min))
+    print("Global Max: {}".format(global_max))
+    print("Global Variance: {}".format(global_variance))
+    print("Global Standard Deviation: {}".format(global_standard_deviation))
+    print('----------------------------------')
+    n1 += n2
+
+
+"""
+Federated Learning
+"""
+
+
+@sio.on("client_status", namespace="/raven-federated")
+async def get_client_status(sid, client_status):
+    print("client_status:{}".format(client_status))
+    if client_status != {}:
+        ravdb.update_federated_op(status=client_status['status'])
+    op = find_op()
+    logger.debug("Op:{}".format(op))
+    if op is None:
+        print("None")
+        return None
+    # Create payload
+    payload = create_payload(op)
+    # Updating client-op mapping
+    client_op_mapping = ravdb.create_client_op_mapping(client_id=sid, op_id=op.id,
+                                                       status=ClientOpMappingStatus.SENT.value)
+    # Emit op
+    logger.debug("Emitting op:{}, {}".format(sid, payload))
+    return payload
+
+
+@sio.on('op_completed', namespace="/raven-federated")
+async def op_completed(sid, data):
+    # Save the results
+    logger.debug("\nResult received {}".format(data))
+    print(data)
+    op_id = data['op_id']
+    logger.debug("{} {} {} {}".format(op_id, type(data['result']), data['operator'], data['result']))
+    op = RavOp(id=op_id)
+    if data["status"] == "success":
+        data = RavData(value=np.array(data['result']), dtype="ndarray")
+        # Update op
+        ravdb.update_op(op._op_db, outputs=json.dumps([data.id]), status=OpStatus.COMPUTED.value)
+        # Update client op mapping
+        mapping = ravdb.find_client_op_mapping(client_id=sid, op_id=op_id)
+        ravdb.update_client_op_mapping(mapping.id, sid=sid, status=ClientOpMappingStatus.COMPUTED.value)
