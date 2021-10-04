@@ -9,7 +9,8 @@ from aiohttp import web
 from ravop import OpStatus, ClientOpMapping, ClientOpMappingStatus, GraphStatus, RavQueue, QUEUE_HIGH_PRIORITY, \
     QUEUE_LOW_PRIORITY, QUEUE_COMPUTING, ravdb, Op as RavOp, Data as RavData
 from sqlalchemy import or_
-
+from .encryption import context, secret_key
+import tenseal as ts
 from .config import RAVSOCK_LOG_FILE, WAIT_INTERVAL_TIME
 
 # Set up a specific logger with our desired output level
@@ -58,7 +59,7 @@ num_clients = 0
 
 @sio.event
 async def connect(sid, environ):
-    logger.debug("Connected:{} {}".format(sid, environ))
+    print("Connected:{} {}".format(sid, environ))
     global num_clients
     print("Connected")
     client_type = None
@@ -81,8 +82,7 @@ async def connect(sid, environ):
                                   reporting="READY", type=client_type)
 
     # Create client
-    # ravdb.create_client(client_id=sid, connected_at=datetime.datetime.now(), status="connected",
-    # type=client_type)
+    ravdb.create_client(client_id=sid, connected_at=datetime.datetime.now(), status="connected", type=client_type)
 
     print("Connected")
 
@@ -261,7 +261,7 @@ async def emit_op(sid, op=None):
     """
     # Find an op
     if op is None:
-        op = find_op()
+        op = find_op(name=ravdb.get_client_by_sid(sid).type)
 
     logger.debug(op)
 
@@ -288,101 +288,118 @@ async def emit_op(sid, op=None):
         # if db.get_first_graph_op(graph_id=op.graph_id).id == op.id:
         ravdb.update(name="graph", id=op.graph_id, status=GraphStatus.COMPUTING.value)
 
-    timer = threading.Timer(2.0, abc, [mapping.id])
-    timer.start()
 
+def find_op(name=None):
+    if name == "analytics":
+        queue_analytics = RavQueue(name="queue:analytics")
+        op_id = queue_analytics.get(0)
 
-def abc(args):
-    print("Done:{}".format(args))
+        if op_id is None:
+            return None
 
+        op = ravdb.get_op(op_id=op_id)
 
-def find_op():
-    op = ravdb.get_incomplete_op()
+        r = ravdb.get_op_readiness(op)
+        if r == "ready":
+            queue_analytics.pop()
+            return op
+        elif r == "parent_op_failed":
+            queue_analytics.pop()
 
-    if op is not None:
-        return op
-    else:
-        q1 = RavQueue(name=QUEUE_HIGH_PRIORITY)
-        q2 = RavQueue(name=QUEUE_LOW_PRIORITY)
+            # Change this op's status to failed
+            if op.status != "failed":
+                ravdb.update_op(op, status=OpStatus.FAILED.value)
+            return None
 
-        while True:
-            op_id1 = None
-            op_id2 = None
+    elif name == "federated":
+        pass
+    elif name == "ravjs":
+        op = ravdb.get_incomplete_op()
 
-            if q1.__len__() > 0:
-                op_id1 = q1.get(0)
-            elif q2.__len__() > 0:
-                op_id2 = q2.get(0)
+        if op is not None:
+            return op
+        else:
+            q1 = RavQueue(name=QUEUE_HIGH_PRIORITY)
+            q2 = RavQueue(name=QUEUE_LOW_PRIORITY)
 
-            if op_id1 is None and op_id2 is None:
-                return None
+            while True:
+                op_id1 = None
+                op_id2 = None
 
-            ops = [op_id1, op_id2]
+                if q1.__len__() > 0:
+                    op_id1 = q1.get(0)
+                elif q2.__len__() > 0:
+                    op_id2 = q2.get(0)
 
-            for index, op_id in enumerate(ops):
-                if op_id is None:
-                    continue
+                if op_id1 is None and op_id2 is None:
+                    return None
 
-                op = ravdb.get_op(op_id=op_id)
+                ops = [op_id1, op_id2]
 
-                if op.graph_id is not None:
-                    if ravdb.get_graph(op.graph_id).status == "failed":
-                        # Change this op's status to failed
-                        if op.status != "failed":
-                            ravdb.update_op(op, status=OpStatus.FAILED.value)
+                for index, op_id in enumerate(ops):
+                    if op_id is None:
+                        continue
+
+                    op = ravdb.get_op(op_id=op_id)
+
+                    if op.graph_id is not None:
+                        if ravdb.get_graph(op.graph_id).status == "failed":
+                            # Change this op's status to failed
+                            if op.status != "failed":
+                                ravdb.update_op(op, status=OpStatus.FAILED.value)
+                                continue
+
+                        elif ravdb.get_graph(op.graph_id).status == "computed":
+                            if index == 0:
+                                q1.pop()
+                            elif index == 1:
+                                q2.pop()
                             continue
 
-                    elif ravdb.get_graph(op.graph_id).status == "computed":
+                    r = ravdb.get_op_readiness(op)
+                    if r == "ready":
                         if index == 0:
                             q1.pop()
                         elif index == 1:
                             q2.pop()
-                        continue
 
-                r = ravdb.get_op_readiness(op)
-                if r == "ready":
-                    if index == 0:
-                        q1.pop()
-                    elif index == 1:
-                        q2.pop()
+                        return op
+                    elif r == "parent_op_failed":
+                        if index == 0:
+                            q1.pop()
+                        elif index == 1:
+                            q2.pop()
 
-                    return op
-                elif r == "parent_op_failed":
-                    if index == 0:
-                        q1.pop()
-                    elif index == 1:
-                        q2.pop()
+                        # Change this op's status to failed
+                        if op.status != "failed":
+                            ravdb.update_op(op, status=OpStatus.FAILED.value)
 
-                    # Change this op's status to failed
-                    if op.status != "failed":
-                        ravdb.update_op(op, status=OpStatus.FAILED.value)
+                return None
 
-            return None
-
-            # if q1.__len__() > 0 or q2.__len__() > 0:
-            #     if
-            #     op_id = q1.get(0)
-            #     op = db.get_op(op_id=op_id)
-            #
-            #     if db.get_op_readiness(op) == "ready":
-            #         q1.pop()
-            #         return op
-            #     elif db.get_op_readiness(op) == "parent_op_not_ready":
-            #         continue
-            #
-            # elif q2.__len__() > 0:
-            #     op_id = q2.get(0)
-            #     op = db.get_op(op_id=int(op_id))
-            #
-            #     if db.get_op_readiness(op) == "ready":
-            #         q2.pop()
-            #         return op
-            #     elif db.get_op_readiness(op) == "parent_op_not_ready":
-            #         continue
-            # else:
-            #     op = None
-            #     print("There is no op")
-            #     return op
+                # if q1.__len__() > 0 or q2.__len__() > 0:
+                #     if
+                #     op_id = q1.get(0)
+                #     op = db.get_op(op_id=op_id)
+                #
+                #     if db.get_op_readiness(op) == "ready":
+                #         q1.pop()
+                #         return op
+                #     elif db.get_op_readiness(op) == "parent_op_not_ready":
+                #         continue
+                #
+                # elif q2.__len__() > 0:
+                #     op_id = q2.get(0)
+                #     op = db.get_op(op_id=int(op_id))
+                #
+                #     if db.get_op_readiness(op) == "ready":
+                #         q2.pop()
+                #         return op
+                #     elif db.get_op_readiness(op) == "parent_op_not_ready":
+                #         continue
+                # else:
+                #     op = None
+                #     print("There is no op")
+                #     return op
 
 
 def create_payload(op):
@@ -429,27 +446,6 @@ def update_client_op_mapping(op_id, sid, status):
                                    response_time=datetime.datetime.now())
 
 
-@sio.on("client_status", namespace="/raven-federated")
-async def get_client_status(sid, client_status):
-    print("client_status:{}".format(client_status))
-    if client_status != {}:
-        ravdb.update_federated_op(status=client_status['status'])
-    op = find_op()
-    logger.debug(op)
-    if op is None:
-        print("None")
-        return None
-    # Create payload
-    payload = create_payload(op)
-    # Updating client-op mapping
-    client_op_mapping = ravdb.create_client_op_mapping(client_id=sid, op_id=op.id,
-                                                       status=ClientOpMappingStatus.SENT.value)
-    # update_client_op_mapping(op.id, sid, ClientOpMappingStatus.ACKNOWLEDGED.value)
-    # Emit op
-    logger.debug("Emitting op:{}, {}".format(sid, payload))
-    return payload
-
-
 @sio.on('op_completed', namespace="/raven-federated")
 async def op_completed(sid, data):
     # Save the results
@@ -471,24 +467,81 @@ global_variance = 0
 global_standard_deviation = 0
 n1 = 0
 n2 = 0
+params = dict()
+
+
+@sio.on("handshake", namespace="/analytics")
+async def get_handshake(sid, data):
+    # Get objective
+    client = ravdb.get_client_by_sid(sid)
+    objective = ravdb.find_active_objective(client.id)
+    print(objective)
+    if objective is not None:
+        # Create objective client mapping
+        objective_client_mapping = ravdb.create_objective_client_mapping(objective_id=objective.id, client_id=client.id)
+        return row2dict(objective)
+
+
+@sio.on("context_vector", namespace="/analytics")
+async def get_context_vector(sid, data):
+    # Setup TenSEAL context
+    global context
+    print(context)
+    return context.serialize()
+
+
+def row2dict(row):
+    d = {}
+    for column in row.__table__.columns:
+        d[column.name] = str(getattr(row, column.name))
+
+    return d
+
+
+@sio.on("receive_params", namespace="/analytics")
+async def receive_params(sid, client_params):
+    global context
+    params.update(client_params)
+    print(client_params['mean'], client_params)
+
+    # size = ts.ckks_tensor_from(context, data=client_params['mean'])
+    # print(size.decrypt(secret_key=secret_key).tolist())
+
+    if client_params.get("objective_id", None) is not None:
+        client = ravdb.get_client_by_sid(sid)
+        objective_client_mapping = ravdb.find_objective_client_mapping(objective_id=client_params['objective_id'],
+                                                                       client_id=client.id)
+
+        ravdb.update_objective_client_mapping(objective_client_mapping.id, status="computed",
+                                              result=str(client_params['mean']))
+
+        ravdb.update_objective(objective_id=client_params['objective_id'], status="computed")
 
 
 @sio.on("fed_analytics", namespace="/analytics")
 async def get_fed_analytics(sid, client_params):
+    # op = find_op(name="analytics")
+    #
+    # payload = create_payload(op)
+    #
+    # clients = ravdb.
+    #
+    # sio.emit()
+
+    print(client_params)
     global global_mean, global_min, global_max, global_variance, global_standard_deviation, num_clients, n1, n2
     if num_clients == 1:
-        n1 = client_params['size']
-        global_mean = client_params['Average']
-        global_variance = client_params['Variance']
+        n1 = ts.ckks_tensor_from(context, client_params['size']).decrypt(secret_key).tolist()[0]
+        global_mean = ts.ckks_tensor_from(context, client_params['Average']).decrypt(secret_key).tolist()[0]
+        global_variance = ts.ckks_tensor_from(context, client_params['Variance']).decrypt(secret_key).tolist()[0]
     else:
-        n2 = client_params['size']
+        n2 = ts.ckks_tensor_from(context, client_params['size']).decrypt(secret_key).tolist()[0]
         m1 = global_mean
-        m2 = client_params['Average']
-        global_variance = (n1 * global_variance + n2 * client_params['Variance']) / (n1 + n2) + (
-                (n1 * n2 * (m1 - m2) ** 2) / (n1 + n2) ** 2)
-        global_mean = global_mean * (n1) / (n1 + n2) + (client_params['Average'] * n2) / (n1 + n2)
-    global_min = min(global_min, client_params['Minimum'])
-    global_max = max(global_max, client_params['Maximum'])
+        m2 = ts.ckks_tensor_from(context, client_params['Average']).decrypt(secret_key).tolist()[0]
+        global_variance = (n1*global_variance + n2*ts.ckks_tensor_from(context, client_params['Variance']).decrypt(secret_key).tolist()[0])/(n1+n2) + ((n1*n2*(m1-m2)**2)/(n1+n2)**2)
+        global_mean = global_mean * (n1) / (n1+n2) + (ts.ckks_tensor_from(context, client_params['Average']).decrypt(secret_key).tolist()[0] * n2) / (n1+n2)
+    global_min = min(global_min, ts.ckks_tensor_from(context, client_params['Minimum']).decrypt(secret_key).tolist()[0])
+    global_max = max(global_max, ts.ckks_tensor_from(context, client_params['Maximum']).decrypt(secret_key).tolist()[0])
     global_standard_deviation = np.sqrt(global_variance)
     print("Global Mean: {}".format(global_mean))
     print("Global Min: {}".format(global_min))
