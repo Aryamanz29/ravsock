@@ -5,13 +5,15 @@ import threading
 
 import numpy as np
 import socketio
-from aiohttp import web
-from ravop import OpStatus, ClientOpMapping, ClientOpMappingStatus, GraphStatus, RavQueue, QUEUE_HIGH_PRIORITY, \
-    QUEUE_LOW_PRIORITY, QUEUE_COMPUTING, ravdb, Op as RavOp, Data as RavData
-from sqlalchemy import or_
-from .encryption import context, secret_key
 import tenseal as ts
+from aiohttp import web
+from ravop import OpStatus, ClientOpMapping, MappingStatus, GraphStatus, RavQueue, QUEUE_HIGH_PRIORITY, \
+    QUEUE_LOW_PRIORITY, QUEUE_COMPUTING, ravdb, Op as RavOp, Data as RavData
+from ravop.db.models import ObjectiveClientMapping
+from sqlalchemy import or_
+
 from .config import RAVSOCK_LOG_FILE, WAIT_INTERVAL_TIME
+from .encryption import secret_key, context
 
 # Set up a specific logger with our desired output level
 logger = logging.getLogger(__name__)
@@ -59,56 +61,61 @@ num_clients = 0
 
 @sio.event
 async def connect(sid, environ):
+    from urllib import parse
+    ps = parse.parse_qs(environ['QUERY_STRING'])
+
+    client_type = ps['type'][0]
+    cid = ps["cid"][0]
+
+    if client_type is None or cid is None:
+        return None
+
     print("Connected:{} {}".format(sid, environ))
-    global num_clients
-    print("Connected")
-    client_type = None
-    if 'ravop' in environ['QUERY_STRING']:
-        client_type = "ravop"
-    elif 'ravjs' in environ['QUERY_STRING']:
-        client_type = "ravjs"
+
+    # Create client
+    client = ravdb.get_client_by_cid(cid)
+    if client is None:
+        ravdb.create_client(cid=cid, sid=sid, type=client_type, status="connected")
     else:
-        if 'raven-federated' in environ['HTTP_CLIENT_NAME']:
-            client_type = "raven-federated"
-            print('Federated Learning Initialized for Client')
-        elif 'analytics' in environ['HTTP_CLIENT_NAME']:
-            client_type = "analytics"
-            print('Analytics Initialized for Client')
-            num_clients += 1
-
-    # Create client
-    if client_type == "raven-federated":
-        obj = ravdb.create_client(client_id=sid, connected_at=datetime.datetime.now(), status="connected",
-                                  reporting="READY", type=client_type)
-
-    # Create client
-    ravdb.create_client(client_id=sid, connected_at=datetime.datetime.now(), status="connected", type=client_type)
-
-    print("Connected")
+        ravdb.update_client(client, sid=sid, connected_at=datetime.datetime.now(), status="connected")
 
 
 @sio.event
 async def disconnect(sid):
-    logger.debug("Disconnected:{}".format(sid))
+    print("Disconnected:{}".format(sid))
 
     client = ravdb.get_client_by_sid(sid=sid)
     if client is not None:
-        ravdb.update_client(client, status="disconnected", disconnected_at=datetime.datetime.now())
+        ravdb.update_client(client, status="disconnected", sid=None,
+                            disconnected_at=datetime.datetime.now())
 
         if client.type == "ravjs":
             # Get ops which were assigned to this
             ops = ravdb.session.query(ClientOpMapping).filter(ClientOpMapping.client_id ==
-                                                              sid).filter(or_(ClientOpMapping.status
-                                                                              == ClientOpMappingStatus.SENT.value,
-                                                                              ClientOpMapping.status ==
-                                                                              ClientOpMappingStatus.ACKNOWLEDGED,
-                                                                              ClientOpMapping.status ==
-                                                                              ClientOpMappingStatus.COMPUTING.value)).all()
+                                                              client.id).filter(or_(ClientOpMapping.status
+                                                                                    == MappingStatus.SENT,
+                                                                                    ClientOpMapping.status ==
+                                                                                    MappingStatus.ACKNOWLEDGED,
+                                                                                    ClientOpMapping.status ==
+                                                                                    MappingStatus.COMPUTING)).all()
 
             print(ops)
             # Set those ops to pending
             for op in ops:
-                ravdb.update_op(op, status=ClientOpMappingStatus.NOT_COMPUTED.value)
+                ravdb.update_op(op, status=MappingStatus.NOT_COMPUTED)
+        elif client.type == "analytics":
+            ops = ravdb.session.query(ObjectiveClientMapping).filter(ObjectiveClientMapping.client_id ==
+                                                                     client.id).filter(or_(ObjectiveClientMapping.status
+                                                                                           == MappingStatus.SENT,
+                                                                                           ObjectiveClientMapping.status ==
+                                                                                           MappingStatus.ACKNOWLEDGED,
+                                                                                           ObjectiveClientMapping.status ==
+                                                                                           MappingStatus.COMPUTING)).all()
+
+            print(ops)
+            # Set those ops to pending
+            for op in ops:
+                ravdb.update_op(op, status=MappingStatus.NOT_COMPUTED)
 
 
 """
@@ -190,7 +197,7 @@ async def acknowledge_op(sid, message):
 
     if op_found is not None:
         # Update client op mapping - Status to acknowledged
-        update_client_op_mapping(op_id, sid, ClientOpMappingStatus.ACKNOWLEDGED.value)
+        update_client_op_mapping(op_id, sid, MappingStatus.ACKNOWLEDGED)
 
 
 @sio.on('op_completed', namespace="/ravjs")
@@ -210,37 +217,37 @@ async def op_completed(sid, data):
         data = RavData(value=np.array(data['result']), dtype="ndarray")
 
         # Update op
-        ravdb.update_op(op._op_db, outputs=json.dumps([data.id]), status=OpStatus.COMPUTED.value)
+        ravdb.update_op(op._op_db, outputs=json.dumps([data.id]), status=OpStatus.COMPUTED)
 
         # Update client op mapping
-        update_client_op_mapping(op_id, sid=sid, status=ClientOpMappingStatus.COMPUTED.value)
+        update_client_op_mapping(op_id, sid=sid, status=MappingStatus.COMPUTED)
 
         db_op = ravdb.get_op(op_id=op_id)
         if db_op.graph_id is not None:
             last_op = ravdb.get_last_graph_op(graph_id=db_op.graph_id)
 
             if last_op.id == op_id:
-                ravdb.update(name="graph", id=db_op.graph_id, status=GraphStatus.COMPUTED.value)
+                ravdb.update(name="graph", id=db_op.graph_id, status=GraphStatus.COMPUTED)
     else:
         # Update op
-        ravdb.update_op(op._op_db, outputs=None, status=OpStatus.FAILED.value, message=data['result'])
+        ravdb.update_op(op._op_db, outputs=None, status=OpStatus.FAILED, message=data['result'])
 
         # Update client op mapping
-        update_client_op_mapping(op_id, sid=sid, status=ClientOpMappingStatus.FAILED.value)
+        update_client_op_mapping(op_id, sid=sid, status=MappingStatus.FAILED)
 
         op_status = ravdb.get_op_status_final(op_id=op_id)
 
         if op_status == "failed":
             db_op = ravdb.get_op(op_id=op_id)
-            ravdb.update(name="graph", id=db_op.graph_id, status=GraphStatus.FAILED.value)
+            ravdb.update(name="graph", id=db_op.graph_id, status=GraphStatus.FAILED)
 
             graph_ops = ravdb.get_graph_ops(graph_id=db_op.graph_id)
             for graph_op in graph_ops:
-                ravdb.update_op(op=graph_op, status=OpStatus.FAILED.value)
+                ravdb.update_op(op=graph_op, status=OpStatus.FAILED)
 
                 mappings = graph_op.mappings
                 for mapping in mappings:
-                    ravdb.update_client_op_mapping(mapping.id, status=ClientOpMappingStatus.FAILED.value)
+                    ravdb.update_client_op_mapping(mapping.id, status=MappingStatus.FAILED)
 
     # Emit another op to this client
     await emit_op(sid)
@@ -279,14 +286,14 @@ async def emit_op(sid, op=None):
     # Store the mapping in database
     client = ravdb.get_client_by_sid(sid)
     ravop = RavOp(id=op.id)
-    ravdb.update_op(ravop._op_db, status=OpStatus.COMPUTING.value)
+    ravdb.update_op(ravop._op_db, status=OpStatus.COMPUTING)
     mapping = ravdb.create_client_op_mapping(client_id=client.id, op_id=op.id, sent_time=datetime.datetime.now(),
-                                             status=ClientOpMappingStatus.SENT.value)
+                                             status=MappingStatus.SENT)
     logger.debug("Mapping created:{}".format(mapping))
 
     if op.graph_id is not None:
         # if db.get_first_graph_op(graph_id=op.graph_id).id == op.id:
-        ravdb.update(name="graph", id=op.graph_id, status=GraphStatus.COMPUTING.value)
+        ravdb.update(name="graph", id=op.graph_id, status=GraphStatus.COMPUTING)
 
 
 def find_op(name=None):
@@ -308,7 +315,7 @@ def find_op(name=None):
 
             # Change this op's status to failed
             if op.status != "failed":
-                ravdb.update_op(op, status=OpStatus.FAILED.value)
+                ravdb.update_op(op, status=OpStatus.FAILED)
             return None
 
     elif name == "federated":
@@ -346,7 +353,7 @@ def find_op(name=None):
                         if ravdb.get_graph(op.graph_id).status == "failed":
                             # Change this op's status to failed
                             if op.status != "failed":
-                                ravdb.update_op(op, status=OpStatus.FAILED.value)
+                                ravdb.update_op(op, status=OpStatus.FAILED)
                                 continue
 
                         elif ravdb.get_graph(op.graph_id).status == "computed":
@@ -372,7 +379,7 @@ def find_op(name=None):
 
                         # Change this op's status to failed
                         if op.status != "failed":
-                            ravdb.update_op(op, status=OpStatus.FAILED.value)
+                            ravdb.update_op(op, status=OpStatus.FAILED)
 
                 return None
 
@@ -478,7 +485,7 @@ async def get_handshake(sid, data):
     print(objective)
     if objective is not None:
         # Create objective client mapping
-        objective_client_mapping = ravdb.create_objective_client_mapping(objective_id=objective.id, client_id=client.id)
+        ravdb.create_objective_client_mapping(objective_id=objective.id, client_id=client.id)
         return row2dict(objective)
 
 
@@ -504,9 +511,6 @@ async def receive_params(sid, client_params):
     params.update(client_params)
     print(client_params['mean'], client_params)
 
-    # size = ts.ckks_tensor_from(context, data=client_params['mean'])
-    # print(size.decrypt(secret_key=secret_key).tolist())
-
     if client_params.get("objective_id", None) is not None:
         client = ravdb.get_client_by_sid(sid)
         objective_client_mapping = ravdb.find_objective_client_mapping(objective_id=client_params['objective_id'],
@@ -515,7 +519,30 @@ async def receive_params(sid, client_params):
         ravdb.update_objective_client_mapping(objective_client_mapping.id, status="computed",
                                               result=str(client_params['mean']))
 
-        ravdb.update_objective(objective_id=client_params['objective_id'], status="computed")
+        objective = ravdb.get_objective(objective_id=client_params['objective_id'])
+        mappings = ravdb.get_objective_mappings(client_params['objective_id'], status=MappingStatus.COMPUTED)
+        rules = json.loads(objective.rules)
+
+        # Calculate
+        if objective.result is None:
+            ravdb.update_objective(objective_id=objective.id, result=json.dumps({"mean": client_params['mean'],
+                                                                                 "n1": client_params['size']}))
+        else:
+            result = json.loads(objective.result)
+
+            current_mean = client_params['mean']
+            previous_mean = result['mean']
+            n1 = result['n1']
+            n2 = client_params['size']
+
+            final_mean = (previous_mean * n1) / (n1 + n2) + (current_mean * n2) / (n1 + n2)
+
+            ravdb.update_objective(objective_id=objective.id, result=json.dumps({"mean": final_mean,
+                                                                                 "n1": n1 + n2}))
+
+        if mappings.count() >= rules['participants']:
+            print()
+            ravdb.update_objective(objective_id=client_params['objective_id'], status="computed")
 
 
 @sio.on("fed_analytics", namespace="/analytics")
@@ -538,8 +565,12 @@ async def get_fed_analytics(sid, client_params):
         n2 = ts.ckks_tensor_from(context, client_params['size']).decrypt(secret_key).tolist()[0]
         m1 = global_mean
         m2 = ts.ckks_tensor_from(context, client_params['Average']).decrypt(secret_key).tolist()[0]
-        global_variance = (n1*global_variance + n2*ts.ckks_tensor_from(context, client_params['Variance']).decrypt(secret_key).tolist()[0])/(n1+n2) + ((n1*n2*(m1-m2)**2)/(n1+n2)**2)
-        global_mean = global_mean * (n1) / (n1+n2) + (ts.ckks_tensor_from(context, client_params['Average']).decrypt(secret_key).tolist()[0] * n2) / (n1+n2)
+        global_variance = (n1 * global_variance + n2 *
+                           ts.ckks_tensor_from(context, client_params['Variance']).decrypt(secret_key).tolist()[0]) / (
+                                  n1 + n2) + ((n1 * n2 * (m1 - m2) ** 2) / (n1 + n2) ** 2)
+        global_mean = global_mean * (n1) / (n1 + n2) + (
+                ts.ckks_tensor_from(context, client_params['Average']).decrypt(secret_key).tolist()[0] * n2) / (
+                              n1 + n2)
     global_min = min(global_min, ts.ckks_tensor_from(context, client_params['Minimum']).decrypt(secret_key).tolist()[0])
     global_max = max(global_max, ts.ckks_tensor_from(context, client_params['Maximum']).decrypt(secret_key).tolist()[0])
     global_standard_deviation = np.sqrt(global_variance)
@@ -571,7 +602,7 @@ async def get_client_status(sid, client_status):
     payload = create_payload(op)
     # Updating client-op mapping
     client_op_mapping = ravdb.create_client_op_mapping(client_id=sid, op_id=op.id,
-                                                       status=ClientOpMappingStatus.SENT.value)
+                                                       status=MappingStatus.SENT)
     # Emit op
     logger.debug("Emitting op:{}, {}".format(sid, payload))
     return payload
@@ -588,7 +619,7 @@ async def op_completed(sid, data):
     if data["status"] == "success":
         data = RavData(value=np.array(data['result']), dtype="ndarray")
         # Update op
-        ravdb.update_op(op._op_db, outputs=json.dumps([data.id]), status=OpStatus.COMPUTED.value)
+        ravdb.update_op(op._op_db, outputs=json.dumps([data.id]), status=OpStatus.COMPUTED)
         # Update client op mapping
         mapping = ravdb.find_client_op_mapping(client_id=sid, op_id=op_id)
-        ravdb.update_client_op_mapping(mapping.id, sid=sid, status=ClientOpMappingStatus.COMPUTED.value)
+        ravdb.update_client_op_mapping(mapping.id, sid=sid, status=MappingStatus.COMPUTED)
