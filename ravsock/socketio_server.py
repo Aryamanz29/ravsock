@@ -15,6 +15,8 @@ from sqlalchemy import or_
 from .config import RAVSOCK_LOG_FILE, WAIT_INTERVAL_TIME
 from .encryption import secret_key, context
 
+print(context)
+
 # Set up a specific logger with our desired output level
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -509,15 +511,15 @@ def row2dict(row):
 async def receive_params(sid, client_params):
     global context
     params.update(client_params)
-    print(client_params['mean'], client_params)
 
     if client_params.get("objective_id", None) is not None:
         client = ravdb.get_client_by_sid(sid)
+        objective = ravdb.get_objective(objective_id=client_params['objective_id'])
         objective_client_mapping = ravdb.find_objective_client_mapping(objective_id=client_params['objective_id'],
                                                                        client_id=client.id)
 
         ravdb.update_objective_client_mapping(objective_client_mapping.id, status="computed",
-                                              result=str(client_params['mean']))
+                                              result=str(client_params[objective.operator]))
 
         objective = ravdb.get_objective(objective_id=client_params['objective_id'])
         mappings = ravdb.get_objective_mappings(client_params['objective_id'], status=MappingStatus.COMPUTED)
@@ -525,23 +527,42 @@ async def receive_params(sid, client_params):
 
         # Calculate
         if objective.result is None:
-            ravdb.update_objective(objective_id=objective.id, result=json.dumps({"mean": client_params['mean'],
-                                                                                 "n1": client_params['size']}))
+            ravdb.update_objective(objective_id=objective.id, result=json.dumps(client_params))
         else:
             result = json.loads(objective.result)
 
-            current_mean = client_params['mean']
-            previous_mean = result['mean']
-            n1 = result['n1']
+            current_mean = client_params.get('mean', None)
+            previous_mean = result.get('mean', None)
+            n1 = result['size']
             n2 = client_params['size']
+            final_mean = None
+            global_variance = None
+            global_standard_deviation = None
+            global_min = min(result['minimum'], client_params.get('minimum', float('inf')))
+            global_max = max(result['maximum'], client_params.get('maximum', float("-inf")))
 
-            final_mean = (previous_mean * n1) / (n1 + n2) + (current_mean * n2) / (n1 + n2)
+            if objective.operator == "mean":
+                final_mean = (previous_mean * n1) / (n1 + n2) + (current_mean * n2) / (n1 + n2)
+            elif objective.operator == "variance":
+                final_mean = (previous_mean * n1) / (n1 + n2) + (current_mean * n2) / (n1 + n2)
+                global_variance = (n1 * result.get('variance', None) + n2 * client_params.get('variance', None)) / \
+                                  (n1 + n2) + ((n1 * n2 * (previous_mean - current_mean) ** 2) / (n1 + n2) ** 2)
+            elif objective.operator == "standard_deviation":
+                final_mean = (previous_mean * n1) / (n1 + n2) + (current_mean * n2) / (n1 + n2)
+                global_variance = (n1 * result.get('variance', None) + n2 * client_params.get('variance', None)) / (
+                        n1 + n2) + (
+                                          (n1 * n2 * (previous_mean - current_mean) ** 2) / (n1 + n2) ** 2)
+                global_standard_deviation = np.sqrt(global_variance)
 
             ravdb.update_objective(objective_id=objective.id, result=json.dumps({"mean": final_mean,
-                                                                                 "n1": n1 + n2}))
+                                                                                 "size": n1 + n2,
+                                                                                 "variance": global_variance,
+                                                                                 "minimum": global_min,
+                                                                                 "maximum": global_max,
+                                                                                 "standard_deviation": global_standard_deviation
+                                                                                 }))
 
         if mappings.count() >= rules['participants']:
-            print()
             ravdb.update_objective(objective_id=client_params['objective_id'], status="computed")
 
 
