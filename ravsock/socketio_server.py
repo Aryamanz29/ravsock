@@ -2,11 +2,13 @@ import datetime
 import json
 import logging.handlers
 import threading
+from random import Random
 
 import numpy as np
 import socketio
 import tenseal as ts
 from aiohttp import web
+from paramiko import SSHClient
 from ravop import OpStatus, ClientOpMapping, MappingStatus, GraphStatus, RavQueue, QUEUE_HIGH_PRIORITY, \
     QUEUE_LOW_PRIORITY, QUEUE_COMPUTING, ravdb, Op as RavOp, Data as RavData
 from ravop.db.models import ObjectiveClientMapping
@@ -14,6 +16,9 @@ from sqlalchemy import or_
 
 from .config import RAVSOCK_LOG_FILE, WAIT_INTERVAL_TIME
 from .encryption import secret_key, context
+from .ftp import get_client, check_credentials
+from .ftp.utils import add_user
+from .helpers import get_random_string
 
 print(context)
 
@@ -77,9 +82,48 @@ async def connect(sid, environ):
     # Create client
     client = ravdb.get_client_by_cid(cid)
     if client is None:
-        ravdb.create_client(cid=cid, sid=sid, type=client_type, status="connected")
+        client = ravdb.create_client(cid=cid, sid=sid, type=client_type, status="connected")
     else:
-        ravdb.update_client(client, sid=sid, connected_at=datetime.datetime.now(), status="connected")
+        client = ravdb.update_client(client, sid=sid, connected_at=datetime.datetime.now(), status="connected")
+
+    # Create FTP credentials
+    if client_type == "analytics":
+
+        ftp_credentials = client.ftp_credentials
+
+        args = (cid, ftp_credentials, client)
+
+        download_thread = threading.Thread(target=create_credentials, name="create_credentials", args=args)
+        download_thread.start()
+
+        # if ftp_credentials is None:
+        #     credentials = add_user(cid)
+        #
+        #     ravdb.update_client(client,
+        #                         ftp_credentials=json.dumps(credentials))
+        # else:
+        #     ftp_credentials = json.loads(ftp_credentials)
+        #     if not check_credentials(ftp_credentials['username'], ftp_credentials['password']):
+        #         credentials = add_user(cid)
+        #
+        #         ravdb.update_client(client,
+        #                             ftp_credentials=json.dumps(credentials))
+
+
+def create_credentials(cid, ftp_credentials, client):
+    if ftp_credentials is None:
+        credentials = add_user(cid)
+
+        ravdb.update_client(client,
+                            ftp_credentials=json.dumps(credentials))
+    else:
+        ftp_credentials = json.loads(ftp_credentials)
+        print("FTP credentials:", ftp_credentials)
+        if not check_credentials(ftp_credentials['username'], ftp_credentials['password']):
+            credentials = add_user(cid)
+
+            ravdb.update_client(client,
+                                ftp_credentials=json.dumps(credentials))
 
 
 @sio.event
@@ -496,7 +540,18 @@ async def get_context_vector(sid, data):
     # Setup TenSEAL context
     global context
     print(context)
-    return context.serialize()
+
+    client = ravdb.get_client_by_sid(sid=sid)
+    if client.ftp_credentials is not None:
+        ftp_credentials = json.loads(client.ftp_credentials)
+        ftp = get_client(username=ftp_credentials['username'], password=ftp_credentials['password'])
+
+        with open("context.txt", "wb") as f:
+            f.write(context.serialize())
+
+        ftp.upload("context.txt", "context.txt")
+
+    return True
 
 
 def row2dict(row):
