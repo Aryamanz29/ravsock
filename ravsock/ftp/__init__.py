@@ -10,7 +10,9 @@ class FTPClient:
         self.ftp.login(user, passwd)
 
     def download(self, filename, path):
+        print("Downloading")
         self.ftp.retrbinary('RETR ' + path, open(filename, 'wb').write)
+        print("Downloaded")
 
     def upload(self, filename, path):
         print("Uploading")
@@ -24,7 +26,7 @@ class FTPClient:
         self.ftp.quit()
 
 
-def get_client(username=None, password=None):
+def get_client(username, password):
     print("FTP User credentials:", FTP_SERVER_URL, username, password)
     return FTPClient(host=FTP_SERVER_URL, user=username, passwd=password)
 

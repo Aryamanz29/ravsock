@@ -1,26 +1,25 @@
+import ast
+import asyncio
 import datetime
 import json
 import logging.handlers
+import os
 import threading
-from random import Random
+import time
 
 import numpy as np
 import socketio
 import tenseal as ts
 from aiohttp import web
-from paramiko import SSHClient
 from ravop import OpStatus, ClientOpMapping, MappingStatus, GraphStatus, RavQueue, QUEUE_HIGH_PRIORITY, \
     QUEUE_LOW_PRIORITY, QUEUE_COMPUTING, ravdb, Op as RavOp, Data as RavData
 from ravop.db.models import ObjectiveClientMapping
 from sqlalchemy import or_
 
-from .config import RAVSOCK_LOG_FILE, WAIT_INTERVAL_TIME
-from .encryption import secret_key, context
+from .config import WAIT_INTERVAL_TIME, PARAMS_FOLDER, CONTEXT_FOLDER, RAVSOCK_LOG_FILE
+from .encryption import get_context, load_context, dump_context
 from .ftp import get_client, check_credentials
 from .ftp.utils import add_user
-from .helpers import get_random_string
-
-print(context)
 
 # Set up a specific logger with our desired output level
 logger = logging.getLogger(__name__)
@@ -31,7 +30,8 @@ handler = logging.handlers.RotatingFileHandler(RAVSOCK_LOG_FILE)
 
 logger.addHandler(handler)
 
-sio = socketio.AsyncServer(cors_allowed_origins="*", async_mode='aiohttp', async_handlers=True)
+sio = socketio.AsyncServer(async_mode="aiohttp", async_handlers=True,
+                           logger=True, engineio_logger=True)
 
 # Creates a new Aiohttp Web Application
 app = web.Application()
@@ -66,51 +66,74 @@ Connect and disconnect events
 num_clients = 0
 
 
-@sio.event
+@sio.event(namespace="/")
 async def connect(sid, environ):
     from urllib import parse
     ps = parse.parse_qs(environ['QUERY_STRING'])
-
-    client_type = ps['type'][0]
+    namespace = "/"
     cid = ps["cid"][0]
-
-    if client_type is None or cid is None:
+    if cid is None:
         return None
+    await create_client(cid, sid, namespace)
 
-    print("Connected:{} {}".format(sid, environ))
+
+@sio.event(namespace="/analytics")
+async def connect(sid, environ):
+    from urllib import parse
+    ps = parse.parse_qs(environ['QUERY_STRING'])
+    namespace = "/analytics"
+    cid = ps["cid"][0]
+    if cid is None:
+        return None
+    await create_client(cid, sid, namespace)
+
+
+async def create_client(cid, sid, namespace):
+    print("Connected:{} {} {}".format(cid, sid, namespace))
+
+    client_type = namespace[1:]
 
     # Create client
     client = ravdb.get_client_by_cid(cid)
     if client is None:
-        client = ravdb.create_client(cid=cid, sid=sid, type=client_type, status="connected")
+        client = ravdb.create_client(cid=cid, type=client_type, status="connected")
+        # Create client sid mapping
+        ravdb.create_client_sid_mapping(cid=cid, sid=sid, client_id=client.id, namespace=namespace)
     else:
-        client = ravdb.update_client(client, sid=sid, connected_at=datetime.datetime.now(), status="connected")
+        client = ravdb.update_client(client, connected_at=datetime.datetime.now(), status="connected")
+        # Update sid
+        client_sid_mapping = ravdb.find_client_sid_mapping(cid=cid, sid=sid)
+
+        if client_sid_mapping is None:
+            ravdb.create_client_sid_mapping(cid=cid, sid=sid, client_id=client.id, namespace=namespace)
+        else:
+            ravdb.update_client_sid_mapping(client_sid_mapping.id, cid=cid, sid=sid, namespace=namespace)
 
     # Create FTP credentials
     if client_type == "analytics":
-
         ftp_credentials = client.ftp_credentials
 
         args = (cid, ftp_credentials, client)
 
-        download_thread = threading.Thread(target=create_credentials, name="create_credentials", args=args)
+        # sio.start_background_task(create_credentials, *args)
+
+        # await create_credentials(*args)
+
+        download_thread = threading.Thread(target=between_callback, name="create_credentials", args=args)
         download_thread.start()
 
-        # if ftp_credentials is None:
-        #     credentials = add_user(cid)
-        #
-        #     ravdb.update_client(client,
-        #                         ftp_credentials=json.dumps(credentials))
-        # else:
-        #     ftp_credentials = json.loads(ftp_credentials)
-        #     if not check_credentials(ftp_credentials['username'], ftp_credentials['password']):
-        #         credentials = add_user(cid)
-        #
-        #         ravdb.update_client(client,
-        #                             ftp_credentials=json.dumps(credentials))
+
+@sio.event
+def between_callback(*args):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    loop.run_until_complete(create_credentials(*args))
+    loop.close()
 
 
-def create_credentials(cid, ftp_credentials, client):
+@sio.event
+async def create_credentials(cid, ftp_credentials, client):
     if ftp_credentials is None:
         credentials = add_user(cid)
 
@@ -132,8 +155,11 @@ async def disconnect(sid):
 
     client = ravdb.get_client_by_sid(sid=sid)
     if client is not None:
-        ravdb.update_client(client, status="disconnected", sid=None,
+        ravdb.update_client(client, status="disconnected",
                             disconnected_at=datetime.datetime.now())
+
+        # Update client sid mapping
+        ravdb.delete_client_sid_mapping(sid=sid)
 
         if client.type == "ravjs":
             # Get ops which were assigned to this
@@ -150,6 +176,7 @@ async def disconnect(sid):
             for op in ops:
                 ravdb.update_op(op, status=MappingStatus.NOT_COMPUTED)
         elif client.type == "analytics":
+            # Update ops
             ops = ravdb.session.query(ObjectiveClientMapping).filter(ObjectiveClientMapping.client_id ==
                                                                      client.id).filter(or_(ObjectiveClientMapping.status
                                                                                            == MappingStatus.SENT,
@@ -525,14 +552,50 @@ params = dict()
 
 @sio.on("handshake", namespace="/analytics")
 async def get_handshake(sid, data):
+    print("Handshake:", sid, data)
+
     # Get objective
     client = ravdb.get_client_by_sid(sid)
+
+    if client is None:
+        return
     objective = ravdb.find_active_objective(client.id)
-    print(objective)
+    print("Objective found:", objective)
     if objective is not None:
         # Create objective client mapping
         ravdb.create_objective_client_mapping(objective_id=objective.id, client_id=client.id)
-        return row2dict(objective)
+
+        """
+        Create, store and upload context
+        """
+        # Create
+        context = get_context()
+
+        # Store
+        filename = "context_with_private_key_{}.txt".format(client.cid)
+        dump_context(context, os.path.join(CONTEXT_FOLDER, filename), save_secret_key=True)
+        ravdb.update_client(client, context=json.dumps({"context_filename": filename}))
+
+        # Create objective dictionary
+        obj_dict = row2dict(objective)
+
+        # Upload
+        if client.ftp_credentials is not None:
+            context.make_context_public()
+            filename2 = "context_without_private_key_{}.txt".format(client.cid)
+            filepath2 = os.path.join(CONTEXT_FOLDER, filename2)
+            dump_context(context, filepath2, save_secret_key=False)
+            ftp_credentials = json.loads(client.ftp_credentials)
+            ftp = get_client(username=ftp_credentials['username'], password=ftp_credentials['password'])
+            ftp.upload(filepath2, filename2)
+
+            obj_dict['ftp_credentials'] = client.ftp_credentials
+            obj_dict['context_filename'] = filename2
+            print("return:", obj_dict)
+
+        await sio.emit("receive_objective", obj_dict, namespace="/analytics", room=sid)
+
+        # return obj_dict
 
 
 @sio.on("context_vector", namespace="/analytics")
@@ -563,9 +626,19 @@ def row2dict(row):
 
 
 @sio.on("receive_params", namespace="/analytics")
-async def receive_params(sid, client_params):
-    global context
-    params.update(client_params)
+async def get_receive_params(sid, data):
+    print(sid)
+    print("Client params:", data)
+    client_params = data
+    client = ravdb.get_client_by_sid(sid)
+    ckks_context = load_context(os.path.join(CONTEXT_FOLDER, json.loads(client.context)['context_filename']))
+    secret_key = ckks_context.secret_key()
+    print(secret_key, ckks_context)
+    return {}
+
+    # Fetch params file
+    ftp_client = get_client(**ast.literal_eval(client.ftp_credentials))
+    ftp_client.download(client_params['params_file'], os.path.join(PARAMS_FOLDER, client_params['params_file']))
 
     if client_params.get("objective_id", None) is not None:
         client = ravdb.get_client_by_sid(sid)
@@ -699,3 +772,35 @@ async def op_completed(sid, data):
         # Update client op mapping
         mapping = ravdb.find_client_op_mapping(client_id=sid, op_id=op_id)
         ravdb.update_client_op_mapping(mapping.id, sid=sid, status=MappingStatus.COMPUTED)
+
+
+"""
+Cleanup
+"""
+
+
+async def cleanup():
+    while True:
+        try:
+            await sio.sleep(2)
+            clients = ravdb.get_clients()
+            for client in clients:
+                if (datetime.datetime.utcnow() - client.last_active_time).seconds > 100:
+                    client_sids = client.client_sids.all()
+                    for client_sid in client_sids:
+                        ravdb.delete(client_sid)
+                    ravdb.delete(client)
+                else:
+                    client_sids = client.client_sids
+                    for client_sid in client_sids:
+                        await sio.emit("check", {"sid": client_sid.sid}, namespace=client_sid.namespace, room=client_sid.sid,
+                                       callback=check_callback)
+        except Exception as e:
+            print("Error:{}".format(str(e)))
+
+
+@sio.event
+async def check_callback(data):
+    print("check_callback", data)
+    client = ravdb.get_client_by_sid(sid=data['sid'])
+    ravdb.update_client(client, last_active_time=datetime.datetime.utcnow())

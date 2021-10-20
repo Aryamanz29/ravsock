@@ -1,0 +1,4 @@
+FTP_SERVER_URL = "54.201.212.222"
+# FTP_SERVER_URL = "localhost"
+FTP_SERVER_USERNAME = "ubuntu"
+FTP_SERVER_PASSWORD = "asdfzxcv"
