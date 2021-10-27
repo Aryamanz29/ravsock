@@ -2,7 +2,7 @@ import ast
 
 import paramiko
 
-from .config import FTP_SERVER_URL, FTP_SERVER_USERNAME, FTP_SERVER_PASSWORD
+from ..config import FTP_SERVER_URL, FTP_SERVER_USERNAME, FTP_SERVER_PASSWORD
 from ..helpers import get_random_string
 
 

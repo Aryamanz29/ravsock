@@ -6,21 +6,20 @@ import logging.handlers
 import os
 import pickle
 import threading
-import time
 
 import numpy as np
 import socketio
 import tenseal as ts
 from aiohttp import web
-from ravop import OpStatus, ClientOpMapping, MappingStatus, GraphStatus, RavQueue, QUEUE_HIGH_PRIORITY, \
-    QUEUE_LOW_PRIORITY, QUEUE_COMPUTING, ravdb, Op as RavOp, Data as RavData
-from ravop.db.models import ObjectiveClientMapping
 from sqlalchemy import or_
 
 from .config import WAIT_INTERVAL_TIME, PARAMS_FOLDER, CONTEXT_FOLDER, RAVSOCK_LOG_FILE
+from .db import ClientOpMapping, RavQueue, QUEUE_COMPUTING, QUEUE_LOW_PRIORITY, \
+    QUEUE_HIGH_PRIORITY, Op as RavOp, Data as RavData, ObjectiveClientMapping
 from .encryption import get_context, load_context, dump_context
-from .ftp import get_client, check_credentials
-from .ftp.utils import add_user
+from .ftp import get_client, check_credentials, add_user
+from .strings import OpStatus, MappingStatus, GraphStatus
+from .db import ravdb
 
 # Set up a specific logger with our desired output level
 logger = logging.getLogger(__name__)
@@ -32,7 +31,7 @@ handler = logging.handlers.RotatingFileHandler(RAVSOCK_LOG_FILE)
 logger.addHandler(handler)
 
 sio = socketio.AsyncServer(async_mode="aiohttp", async_handlers=True,
-                           logger=True)
+                           logger=True, cors_allowed_origins="*")
 
 # Creates a new Aiohttp Web Application
 app = web.Application()
@@ -83,6 +82,17 @@ async def connect(sid, environ):
     from urllib import parse
     ps = parse.parse_qs(environ['QUERY_STRING'])
     namespace = "/analytics"
+    cid = ps["cid"][0]
+    if cid is None:
+        return None
+    await create_client(cid, sid, namespace)
+
+
+@sio.event(namespace="/ravjs")
+async def connect(sid, environ):
+    from urllib import parse
+    ps = parse.parse_qs(environ['QUERY_STRING'])
+    namespace = "/"
     cid = ps["cid"][0]
     if cid is None:
         return None
@@ -813,7 +823,8 @@ async def cleanup():
                 else:
                     client_sids = client.client_sids
                     for client_sid in client_sids:
-                        await sio.emit("check", {"sid": client_sid.sid}, namespace=client_sid.namespace, room=client_sid.sid,
+                        await sio.emit("check", {"sid": client_sid.sid}, namespace=client_sid.namespace,
+                                       room=client_sid.sid,
                                        callback=check_callback)
         except Exception as e:
             print("Error:{}".format(str(e)))
@@ -824,3 +835,20 @@ async def check_callback(data):
     print("check_callback", data)
     client = ravdb.get_client_by_sid(sid=data['sid'])
     ravdb.update_client(client, last_active_time=datetime.datetime.utcnow())
+
+
+# we can define aiohttp endpoints just as we normally would with no change
+async def index(request):
+    with open('ravclient/index.html') as f:
+        return web.Response(text=f.read(), content_type='text/html')
+
+
+async def add_op(request):
+    from ravop import t
+    print(request.rel_url)
+    a = t(ast.literal_eval(request.rel_url.query['value']))
+    return web.Response(text=str(a.id), content_type='text/html', status=400)
+
+
+app.router.add_get('/', index)
+app.router.add_get('/op/add/', add_op)

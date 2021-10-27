@@ -1,3 +1,0 @@
-FTP_SERVER_URL = "...."
-FTP_SERVER_USERNAME = "...."
-FTP_SERVER_PASSWORD = "...."

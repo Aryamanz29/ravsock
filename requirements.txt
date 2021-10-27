@@ -6,4 +6,3 @@ gevent_socketio==0.3.6
 SQLAlchemy==1.4.26
 python-engineio==4.2.1
 python-socketio==5.4.1
-git+git://github.com/ravenprotocol/ravop.git

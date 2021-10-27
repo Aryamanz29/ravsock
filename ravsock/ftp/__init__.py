@@ -1,6 +1,7 @@
 from ftplib import FTP
 
-from .config import FTP_SERVER_URL, FTP_SERVER_PASSWORD, FTP_SERVER_USERNAME
+from .utils import add_user
+from ..config import FTP_SERVER_URL
 
 
 class FTPClient:
@@ -26,14 +27,19 @@ class FTPClient:
         self.ftp.quit()
 
 
-def get_client(username, password):
-    print("FTP User credentials:", FTP_SERVER_URL, username, password)
-    return FTPClient(host=FTP_SERVER_URL, user=username, passwd=password)
+def get_client(host=None, username=None, password=None):
+    if host is None:
+        host = FTP_SERVER_URL
+    print("FTP User credentials:", host, username, password)
+    return FTPClient(host=host, user=username, passwd=password)
 
 
-def check_credentials(username, password):
+def check_credentials(host=None, username=None, password=None):
+    if host is None:
+        host = FTP_SERVER_URL
+
     try:
-        FTPClient(host=FTP_SERVER_URL, user=username, passwd=password)
+        FTPClient(host=host, user=username, passwd=password)
         return True
     except Exception as e:
         print("Error:{}".format(str(e)))
