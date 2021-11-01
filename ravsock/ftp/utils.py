@@ -14,9 +14,15 @@ def add_user(cid):
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     ssh.connect(FTP_SERVER_URL, 22, FTP_SERVER_USERNAME, FTP_SERVER_PASSWORD)
 
-    stdin, stdout, stderr = ssh.exec_command("sudo python3 ~/raven-ftp-server/add_user.py --username {} --password {}".format(username, password))
+    stdin, stdout, stderr = ssh.exec_command(
+        "sudo python3 ~/raven-ftp-server/add_user.py --username {} --password {}".format(
+            username, password
+        )
+    )
 
-    ssh.exec_command("nohup sudo python3 ~/raven-ftp-server/run.py --action restart > output.log &")
+    ssh.exec_command(
+        "nohup sudo python3 ~/raven-ftp-server/run.py --action restart > output.log &"
+    )
 
     for line in iter(stderr.readline, ""):
         print(line, end="")
@@ -32,4 +38,3 @@ def add_user(cid):
     ssh.close()
 
     return {"username": username, "password": password}
-

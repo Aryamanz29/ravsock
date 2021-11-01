@@ -8,7 +8,7 @@ Base = declarative_base()
 
 
 class Graph(Base):
-    __tablename__ = 'graph'
+    __tablename__ = "graph"
     id = Column(Integer, primary_key=True)
     ops = relationship("Op", backref="graph")
 
@@ -19,7 +19,7 @@ class Graph(Base):
 
 
 class Data(Base):
-    __tablename__ = 'data'
+    __tablename__ = "data"
     id = Column(Integer, primary_key=True)
     type = Column(String(20), nullable=False)
     file_path = Column(String(200), nullable=True)
@@ -29,7 +29,7 @@ class Data(Base):
 
 
 class Client(Base):
-    __tablename__ = 'client'
+    __tablename__ = "client"
     id = Column(Integer, primary_key=True)
     cid = Column(String(100), nullable=False)
     client_ip = Column(String(20), nullable=True)
@@ -53,9 +53,9 @@ class Client(Base):
 
 
 class ClientSIDMapping(Base):
-    __tablename__ = 'client_sid_mapping'
+    __tablename__ = "client_sid_mapping"
     id = Column(Integer, primary_key=True)
-    client_id = Column(Integer, ForeignKey('client.id'))
+    client_id = Column(Integer, ForeignKey("client.id"))
     cid = Column(String(100), nullable=False)
     sid = Column(String(100), nullable=False)
     namespace = Column(String(100), nullable=False)
@@ -64,14 +64,14 @@ class ClientSIDMapping(Base):
 
 
 class Op(Base):
-    __tablename__ = 'op'
+    __tablename__ = "op"
     id = Column(Integer, primary_key=True)
 
     # Op name
     name = Column(String(20), nullable=True)
 
     # Graph id
-    graph_id = Column(Integer, ForeignKey('graph.id'))
+    graph_id = Column(Integer, ForeignKey("graph.id"))
 
     # Store list of op ids
     inputs = Column(Text, nullable=True)
@@ -99,8 +99,8 @@ class Op(Base):
 class ClientOpMapping(Base):
     __tablename__ = "client_op_mapping"
     id = Column(Integer, primary_key=True)
-    client_id = Column(Integer, ForeignKey('client.id'))
-    op_id = Column(Integer, ForeignKey('op.id'))
+    client_id = Column(Integer, ForeignKey("client.id"))
+    op_id = Column(Integer, ForeignKey("op.id"))
     sent_time = Column(DateTime, default=None)
     response_time = Column(DateTime, default=None)
 
@@ -113,8 +113,8 @@ class ClientOpMapping(Base):
 class GraphClientMapping(Base):
     __tablename__ = "graph_client_mapping"
     id = Column(Integer, primary_key=True)
-    graph_id = Column(Integer, ForeignKey('graph.id'))
-    client_id = Column(Integer, ForeignKey('client.id'))
+    graph_id = Column(Integer, ForeignKey("graph.id"))
+    client_id = Column(Integer, ForeignKey("client.id"))
     sent_time = Column(DateTime, default=None)
     response_time = Column(DateTime, default=None)
 
@@ -132,7 +132,7 @@ Federated and analytics
 class Objective(Base):
     __tablename__ = "objective"
     id = Column(Integer, primary_key=True)
-    graph_id = Column(Integer, ForeignKey('graph.id'))
+    graph_id = Column(Integer, ForeignKey("graph.id"))
     name = Column(String(50), nullable=True, default=None)
     operator = Column(String(50), nullable=True, default=None)
     rules = Column(Text, nullable=True, default=None)
@@ -150,11 +150,11 @@ class Objective(Base):
 class ObjectiveClientMapping(Base):
     __tablename__ = "objective_client_mapping"
     id = Column(Integer, primary_key=True)
-    objective_id = Column(Integer, ForeignKey('objective.id'))
-    client_id = Column(Integer, ForeignKey('client.id'))
+    objective_id = Column(Integer, ForeignKey("objective.id"))
+    client_id = Column(Integer, ForeignKey("client.id"))
     sent_time = Column(DateTime, default=None)
     response_time = Column(DateTime, default=None)
-    input_id = Column(Integer, ForeignKey('op.id'))
+    input_id = Column(Integer, ForeignKey("op.id"))
     result = Column(Text, default=None)
 
     # 1. computing 2. computed 3. failed

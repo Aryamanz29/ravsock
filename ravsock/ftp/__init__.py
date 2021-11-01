@@ -12,16 +12,16 @@ class FTPClient:
 
     def download(self, filename, path):
         print("Downloading")
-        self.ftp.retrbinary('RETR ' + path, open(filename, 'wb').write)
+        self.ftp.retrbinary("RETR " + path, open(filename, "wb").write)
         print("Downloaded")
 
     def upload(self, filename, path):
         print("Uploading")
-        self.ftp.storbinary('STOR ' + path, open(filename, 'rb'))
+        self.ftp.storbinary("STOR " + path, open(filename, "rb"))
         print("Uploaded")
 
     def list_server_files(self):
-        self.ftp.retrlines('LIST')
+        self.ftp.retrlines("LIST")
 
     def close(self):
         self.ftp.quit()

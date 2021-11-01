@@ -1,0 +1,6 @@
+[flake8]
+max-line-length = 150
+filename = *.py
+ignore = E203, E713, W503
+# Provide a comma-separated list of glob patterns to exclude from checks.
+exclude = .git, __pycache__, env, venv, ravsock/db/__init__.py
