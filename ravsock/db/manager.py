@@ -4,10 +4,24 @@ import numpy as np
 import sqlalchemy as db
 from sqlalchemy import or_, and_
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy_utils import database_exists, create_database as cd, drop_database as dba
+from sqlalchemy_utils import (
+    database_exists,
+    create_database as cd,
+    drop_database as dba,
+)
 
-from .models import Op, Graph, ClientOpMapping, Client, Data, Base, GraphClientMapping, Objective, \
-    ObjectiveClientMapping, ClientSIDMapping
+from .models import (
+    Op,
+    Graph,
+    ClientOpMapping,
+    Client,
+    Data,
+    Base,
+    GraphClientMapping,
+    Objective,
+    ObjectiveClientMapping,
+    ClientSIDMapping,
+)
 from ..config import RDF_DATABASE_URI
 from ..strings import MappingStatus, OpStatus
 from ..utils import delete_data_file, save_data_to_file, Singleton
@@ -298,7 +312,12 @@ class DBManager(object):
 
     def get_ops_by_name(self, op_name, graph_id=None):
         if graph_id is not None:
-            ops = self.session.query(Op).filter(Op.graph_id == graph_id).filter(Op.name.contains(op_name)).all()
+            ops = (
+                self.session.query(Op)
+                .filter(Op.graph_id == graph_id)
+                .filter(Op.name.contains(op_name))
+                .all()
+            )
         else:
             ops = self.session.query(Op).filter(Op.name.contains(op_name)).all()
 
@@ -343,7 +362,12 @@ class DBManager(object):
         Get a list of all ops not associated to any graph
         """
         if status is not None:
-            return self.session.query(Op).filter(Op.graph_id is None).filter(Op.status == status).all()
+            return (
+                self.session.query(Op)
+                .filter(Op.graph_id is None)
+                .filter(Op.status == status)
+                .all()
+            )
         else:
             return self.session.query(Op).filter(Op.graph_id is None).all()
 
@@ -373,9 +397,13 @@ class DBManager(object):
 
         client_list = []
         for client in clients:
-            client_ops = client.client_ops.filter(or_(ClientOpMapping.status == MappingStatus.SENT,
-                                                      ClientOpMapping.status == MappingStatus.ACKNOWLEDGED,
-                                                      ClientOpMapping.status == MappingStatus.COMPUTING))
+            client_ops = client.client_ops.filter(
+                or_(
+                    ClientOpMapping.status == MappingStatus.SENT,
+                    ClientOpMapping.status == MappingStatus.ACKNOWLEDGED,
+                    ClientOpMapping.status == MappingStatus.COMPUTING,
+                )
+            )
             if client_ops.count() == 0:
                 client_list.append(client)
 
@@ -388,7 +416,12 @@ class DBManager(object):
         if graph_id is None and status is None:
             return self.session.query(Op).all()
         elif graph_id is not None and status is not None:
-            return self.session.query(Op).filter(Op.graph_id == graph_id).filter(Op.status == status).all()
+            return (
+                self.session.query(Op)
+                .filter(Op.graph_id == graph_id)
+                .filter(Op.status == status)
+                .all()
+            )
         else:
             if graph_id is not None:
                 return self.session.query(Op).filter(Op.graph_id == graph_id).all()
@@ -415,8 +448,13 @@ class DBManager(object):
         return mapping
 
     def find_client_op_mapping(self, client_id, op_id):
-        mapping = self.session.query(ClientOpMapping).filter(ClientOpMapping.client_id == client_id,
-                                                             ClientOpMapping.op_id == op_id).first()
+        mapping = (
+            self.session.query(ClientOpMapping)
+            .filter(
+                ClientOpMapping.client_id == client_id, ClientOpMapping.op_id == op_id
+            )
+            .first()
+        )
         return mapping
 
     def get_incomplete_op(self):
@@ -424,10 +462,22 @@ class DBManager(object):
 
         for op in ops:
             op_mappings = op.op_mappings
-            if op_mappings.filter(ClientOpMapping.status == MappingStatus.SENT).count() >= 3 or \
-                    op_mappings.filter(ClientOpMapping.status == MappingStatus.COMPUTING).count() >= 2 \
-                    or op_mappings.filter(ClientOpMapping.status == MappingStatus.REJECTED).count() >= 5 \
-                    or op_mappings.filter(ClientOpMapping.status == MappingStatus.FAILED).count() >= 3:
+            if (
+                op_mappings.filter(ClientOpMapping.status == MappingStatus.SENT).count()
+                >= 3
+                or op_mappings.filter(
+                    ClientOpMapping.status == MappingStatus.COMPUTING
+                ).count()
+                >= 2
+                or op_mappings.filter(
+                    ClientOpMapping.status == MappingStatus.REJECTED
+                ).count()
+                >= 5
+                or op_mappings.filter(
+                    ClientOpMapping.status == MappingStatus.FAILED
+                ).count()
+                >= 3
+            ):
                 continue
 
             return op
@@ -436,7 +486,10 @@ class DBManager(object):
     def get_op_status_final(self, op_id):
         op = self.get_op(op_id=op_id)
         op_mappings = op.op_mappings
-        if op_mappings.filter(ClientOpMapping.status == MappingStatus.FAILED).count() >= 3:
+        if (
+            op_mappings.filter(ClientOpMapping.status == MappingStatus.FAILED).count()
+            >= 3
+        ):
             return "failed"
 
         return "computing"
@@ -468,8 +521,12 @@ class DBManager(object):
         return clients, clients_sids
 
     def update_federated_op(self, **kwargs):
-        ops = self.session.query(Op).filter(Op.operator == 'federated_training').filter(
-            Op.id == kwargs.get("id")).all()
+        ops = (
+            self.session.query(Op)
+            .filter(Op.operator == "federated_training")
+            .filter(Op.id == kwargs.get("id"))
+            .all()
+        )
         print(ops)
         for op in ops:
             for key, value in kwargs.items():
@@ -504,8 +561,14 @@ class DBManager(object):
         return mapping
 
     def find_graph_client_mapping(self, graph_id, client_id):
-        mapping = self.session.query(GraphClientMapping).filter(GraphClientMapping.client_id == client_id,
-                                                                GraphClientMapping.graph_id == graph_id).first()
+        mapping = (
+            self.session.query(GraphClientMapping)
+            .filter(
+                GraphClientMapping.client_id == client_id,
+                GraphClientMapping.graph_id == graph_id,
+            )
+            .first()
+        )
         return mapping
 
     """
@@ -523,8 +586,11 @@ class DBManager(object):
         return self.get("objective", objective_id)
 
     def find_active_objective(self, client_id):
-        objectives = self.session.query(Objective).filter(or_(Objective.status == "pending",
-                                                              Objective.status == "active")).all()
+        objectives = (
+            self.session.query(Objective)
+            .filter(or_(Objective.status == "pending", Objective.status == "active"))
+            .all()
+        )
         for objective in objectives:
             if self.find_objective_client_mapping(objective.id, client_id) is None:
                 return objective
@@ -537,7 +603,9 @@ class DBManager(object):
         return self.add("objective_client_mapping", **kwargs)
 
     def update_objective_client_mapping(self, objective_client_mapping_id, **kwargs):
-        return self.update("objective_client_mapping", objective_client_mapping_id, **kwargs)
+        return self.update(
+            "objective_client_mapping", objective_client_mapping_id, **kwargs
+        )
 
     def get_objective_client_mapping(self, objective_client_mapping_id):
         return self.get("objective_client_mapping", objective_client_mapping_id)
@@ -546,19 +614,26 @@ class DBManager(object):
         return self.session.query(ObjectiveClientMapping).all()
 
     def find_objective_client_mapping(self, objective_id, client_id):
-        mapping = self.session.query(ObjectiveClientMapping).filter(ObjectiveClientMapping.client_id == client_id,
-                                                                    ObjectiveClientMapping.objective_id == objective_id) \
+        mapping = (
+            self.session.query(ObjectiveClientMapping)
+            .filter(
+                ObjectiveClientMapping.client_id == client_id,
+                ObjectiveClientMapping.objective_id == objective_id,
+            )
             .first()
+        )
         return mapping
 
     def get_objective_mappings(self, objective_id, status=None):
         if status is not None:
             return self.session.query(ObjectiveClientMapping).filter(
                 ObjectiveClientMapping.objective_id == objective_id,
-                ObjectiveClientMapping.status == MappingStatus.COMPUTED)
+                ObjectiveClientMapping.status == MappingStatus.COMPUTED,
+            )
         else:
             return self.session.query(ObjectiveClientMapping).filter(
-                ObjectiveClientMapping.objective_id == objective_id)
+                ObjectiveClientMapping.objective_id == objective_id
+            )
 
     """
     Client SID Mapping
@@ -574,14 +649,23 @@ class DBManager(object):
         return self.get("client_sid_mapping", client_sid_mapping_id)
 
     def delete_client_sid_mapping(self, sid):
-        self.session.query(ClientSIDMapping).filter(ClientSIDMapping.sid == sid).first().delete()
+        self.session.query(ClientSIDMapping).filter(
+            ClientSIDMapping.sid == sid
+        ).first().delete()
 
     def find_client_sid_mapping(self, cid, sid):
-        return self.session.query(ClientSIDMapping).filter(
-            and_(ClientSIDMapping.sid == sid, ClientSIDMapping.cid == cid)).first()
+        return (
+            self.session.query(ClientSIDMapping)
+            .filter(and_(ClientSIDMapping.sid == sid, ClientSIDMapping.cid == cid))
+            .first()
+        )
 
     def get_client_by_sid(self, sid):
-        client_sid_mapping = self.session.query(ClientSIDMapping).filter(ClientSIDMapping.sid == sid).first()
+        client_sid_mapping = (
+            self.session.query(ClientSIDMapping)
+            .filter(ClientSIDMapping.sid == sid)
+            .first()
+        )
         if client_sid_mapping is None:
             return None
         else:

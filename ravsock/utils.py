@@ -48,7 +48,7 @@ class Singleton:
             return self._instance
 
     def __call__(self):
-        raise TypeError('Singletons must be accessed through `Instance()`.')
+        raise TypeError("Singletons must be accessed through `Instance()`.")
 
     def __instancecheck__(self, inst):
         return isinstance(inst, self._cls)
@@ -83,6 +83,7 @@ def copy_data(source, destination):
 
 def reset_database():
     from .db import ravdb
+
     ravdb.drop_database()
     ravdb.create_database()
     ravdb.create_tables()
@@ -101,4 +102,5 @@ def reset():
 
     # Clear redis queues
     from .db import clear_redis_queues
+
     clear_redis_queues()

@@ -1,3 +1,3 @@
-from ravop import reset
+from ravsock.utils import reset
 
 reset()
