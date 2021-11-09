@@ -3,6 +3,7 @@ from aiohttp import web
 from .db import ravdb
 from .utils import dump_data
 import numpy as np
+import json
 
 # from ravop.core import t
 
@@ -16,6 +17,7 @@ async def op_get(request):
     # http://localhost:9999/ravdb/op/get/?id=3
     op_id = request.rel_url.query["id"]
     print(op_id)
+
     return web.Response(
         text=str(ravdb.get_op(op_id)), content_type="text/html", status=200
     )
@@ -25,6 +27,7 @@ async def op_status(request):
     # http://localhost:9999/ravdb/op/status/?id=3
     op_id = request.rel_url.query["id"]
     print(op_id)
+
     return web.Response(
         text=str(ravdb.get_op_status(op_id)), content_type="text/html", status=200
     )
@@ -34,6 +37,7 @@ async def op_refresh(request):
     # http://localhost:9999/ravdb/op/refresh/?id=3
     op_id = request.rel_url.query["id"]
     print(op_id)
+
     return web.Response(
         text=str(ravdb.refresh(ravdb.get_op(op_id))),
         content_type="text/html",
@@ -45,6 +49,7 @@ async def op_get_data(request):
     # http://localhost:9999/ravdb/op/get/data/?id=3
     op_id = request.rel_url.query["id"]
     print(op_id)
+
     return web.Response(
         text=str(ravdb.refresh(ravdb.get_data(op_id))),
         content_type="text/html",
@@ -71,6 +76,7 @@ async def op_create(request):
     operator = request.rel_url.query["operator"]
     status = request.rel_url.query["status"]
     params = request.rel_url.query["params"]
+
     op = ravdb.create_op(
         name=name,
         graph_id=graph_id,
@@ -82,8 +88,10 @@ async def op_create(request):
         status=status,
         params=params,
     )
+
     print("ARGS string:", request.query_string)  # arguments in URL as string
     print("ARGS       :", request.query)  # arguments in URL as dictionary
+
     return web.Response(text=str(op), content_type="text/html", status=200)
 
 
@@ -94,14 +102,118 @@ async def db_create_data(request):
     value = np.fromstring(value, dtype=np.uint8)
     data = ravdb.create_data(type=dtype)
     print(dtype, "DATA == ", data)
+
     if dtype == "ndarray":
         file_path = dump_data(data.id, value)
         # Update file path
         ravdb.update_data(data, file_path=file_path)
     elif dtype in ["int", "float"]:
         ravdb.update_data(data, value=value)
+
     return web.Response(
         text=str(data),
         content_type="text/html",
         status=200,
+    )
+
+
+async def graph_create(request):
+    # http://localhost:9999/ravdb/graph/create/
+    # Create a new graph
+    graph_obj = ravdb.create_graph()
+    graph_id = graph_obj.id
+    print(graph_obj, graph_id)
+
+    data = {"graph_obj": str(graph_obj), "graph_id": graph_id}
+
+    return web.json_response(
+        data,
+        text=None,
+        body=None,
+        status=200,
+        reason=None,
+        headers=None,
+        content_type="application/json",
+        dumps=json.dumps,
+    )
+
+
+async def graph_get(request):
+    # http://localhost:9999/ravdb/graph/get/?graph_id=1
+    graph_id = request.rel_url.query["graph_id"]
+    graph_obj = ravdb.get_graph(graph_id=graph_id)
+    print(graph_id, graph_obj)
+
+    data = {"graph_obj": str(graph_obj), "graph_id": graph_id}
+
+    return web.json_response(
+        data,
+        text=None,
+        body=None,
+        status=200,
+        reason=None,
+        headers=None,
+        content_type="application/json",
+        dumps=json.dumps,
+    )
+
+
+async def graph_op_get(request):
+    # http://localhost:9999/ravdb/graph/op/get/?graph_id=1
+    graph_id = request.rel_url.query["graph_id"]
+    ops = ravdb.get_graph_ops(graph_id=graph_id)
+    print(graph_id, ops)
+
+    data = {"graph_id": graph_id, "ops": ops}
+
+    return web.json_response(
+        data,
+        text=None,
+        body=None,
+        status=200,
+        reason=None,
+        headers=None,
+        content_type="application/json",
+        dumps=json.dumps,
+    )
+
+
+async def graph_op_delete(request):
+    # http://localhost:9999/ravdb/graph/op/delete/?graph_db_id=1
+    graph_db_id = request.rel_url.query["graph_db_id"]
+    data = {
+        "graph_obj": ravdb.delete_graph_ops(graph_db_id),
+        "message": "Graph Object has been deleted",
+    }
+
+    return web.json_response(
+        data,
+        text=None,
+        body=None,
+        status=200,
+        reason=None,
+        headers=None,
+        content_type="application/json",
+        dumps=json.dumps,
+    )
+
+
+async def graph_op_name_get(request):
+    # http://localhost:9999/ravdb/graph/op/name/get/?op_name=""&graph_id=1
+    op_name = request.rel_url.query["op_name"]
+    graph_id = request.rel_url.query["graph_id"]
+    ops = ravdb.get_ops_by_name(op_name=op_name, graph_id=graph_id)
+    print(op_name, graph_id, ops)
+
+    data = {"op_name": op_name, "graph_id": graph_id, "ops": ops}
+
+    return web.json_response(
+        data,
+        text=None,
+        body=None,
+        status=200,
+        reason=None,
+        headers=None,
+        content_type="application/json",
+        dumps=json.dumps,
     )
