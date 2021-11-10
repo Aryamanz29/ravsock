@@ -1002,6 +1002,7 @@ async def check_callback(data):
 # We bind our aiohttp endpoint to our app router
 
 app.router.add_get("/", index)
+# OPS web endpoints
 app.router.add_get("/ravdb/op/status/", op_status)
 app.router.add_get("/ravdb/op/get/", op_get)
 app.router.add_get("/ravdb/op/refresh/", op_refresh)
@@ -1009,3 +1010,10 @@ app.router.add_get("/ravdb/op/refresh/", op_refresh)
 app.router.add_get("/ravdb/op/get/data/", op_get_data)
 app.router.add_post("/ravdb/op/create/", op_create)
 app.router.add_get("/ravdb/create/data/", db_create_data)
+
+# Graph web endpoints
+app.router.add_get("/ravdb/graph/create/", graph_create)
+app.router.add_get("/ravdb/graph/get/", graph_get)
+app.router.add_get("/ravdb/graph/op/get/", graph_op_get)
+app.router.add_get("/ravdb/graph/op/delete/", graph_op_delete)
+app.router.add_get("/ravdb/graph/op/name/get/", graph_op_name_get)
