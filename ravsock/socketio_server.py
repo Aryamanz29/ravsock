@@ -26,7 +26,7 @@ from .encryption import get_context, load_context, dump_context
 from .ftp import get_client, check_credentials, add_user
 from .strings import OpStatus, MappingStatus, GraphStatus
 from .db import ravdb
-from .socket_endpoints import index, op_get, op_status, op_refresh, op_get_data
+from .socket_endpoints import *
 
 # Set up a specific logger with our desired output level
 logger = logging.getLogger(__name__)
@@ -1002,8 +1002,10 @@ async def check_callback(data):
 # We bind our aiohttp endpoint to our app router
 
 app.router.add_get("/", index)
-app.router.add_get("/op/status/", op_status)
-app.router.add_get("/op/get/", op_get)
-app.router.add_get("/op/refresh/", op_refresh)
-app.router.add_get("/op/get/data/", op_get_data)
-# app.router.add_get('/op/add/', op_add)
+app.router.add_get("/ravdb/op/status/", op_status)
+app.router.add_get("/ravdb/op/get/", op_get)
+app.router.add_get("/ravdb/op/refresh/", op_refresh)
+# app.router.add_get('/ravdb/op/add/', op_add)
+app.router.add_get("/ravdb/op/get/data/", op_get_data)
+app.router.add_post("/ravdb/op/create/", op_create)
+app.router.add_get("/ravdb/create/data/", db_create_data)
