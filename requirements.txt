@@ -2,7 +2,6 @@ tenseal==0.3.4
 paramiko==2.8.0
 numpy==1.20.3
 aiohttp==3.7.4.post0
-gevent_socketio==0.3.6
 SQLAlchemy==1.4.26
 python-engineio==4.2.1
 python-socketio==5.4.1
