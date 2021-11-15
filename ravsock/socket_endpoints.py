@@ -1,15 +1,17 @@
-import ast
+import json
+
+import numpy as np
 from aiohttp import web
+
 from .db import ravdb
 from .utils import dump_data
-import numpy as np
-import json
+
 
 # from ravop.core import t
 
 # We can define aiohttp endpoints just as we normally would with no change
 async def index(request):
-    with open("ravclient/index.html") as f:
+    with open("index.html") as f:
         return web.Response(text=f.read(), content_type="text/html")
 
 
@@ -18,9 +20,22 @@ async def op_get(request):
     op_id = request.rel_url.query["id"]
     print(op_id)
 
-    return web.Response(
-        text=str(ravdb.get_op(op_id)), content_type="text/html", status=200
-    )
+    op = ravdb.get_op(op_id)
+
+    if op is None:
+        return web.json_response({"message": "Invalid op id"}, content_type="text/html", status=400
+                                 )
+    else:
+        op_dict = db_model_to_dict(op)
+        return web.json_response(op_dict, content_type="text/html", status=200
+                                 )
+
+
+def db_model_to_dict(obj):
+    obj1 = obj.__dict__
+    del obj1['_sa_instance_state']
+    del obj1['created_at']
+    return obj1
 
 
 async def op_status(request):
@@ -28,21 +43,14 @@ async def op_status(request):
     op_id = request.rel_url.query["id"]
     print(op_id)
 
-    return web.Response(
-        text=str(ravdb.get_op_status(op_id)), content_type="text/html", status=200
-    )
+    op = ravdb.get_op(op_id)
 
-
-async def op_refresh(request):
-    # http://localhost:9999/ravdb/op/refresh/?id=3
-    op_id = request.rel_url.query["id"]
-    print(op_id)
-
-    return web.Response(
-        text=str(ravdb.refresh(ravdb.get_op(op_id))),
-        content_type="text/html",
-        status=200,
-    )
+    if op is None:
+        return web.json_response({"message": "Invalid op id"}, content_type="text/html", status=400
+                                 )
+    else:
+        return web.json_response({"status": op.status}, content_type="text/html", status=200
+                                 )
 
 
 async def op_get_data(request):
@@ -50,11 +58,17 @@ async def op_get_data(request):
     op_id = request.rel_url.query["id"]
     print(op_id)
 
-    return web.Response(
-        text=str(ravdb.refresh(ravdb.get_data(op_id))),
-        content_type="text/html",
-        status=200,
-    )
+    op = ravdb.get_op(op_id)
+
+    if op is None:
+        return web.json_response({"message": "Invalid op id"}, content_type="text/html", status=400
+                                 )
+    else:
+        data = ravdb.get_data(op_id)
+        return web.json_response({"data": data},
+                                 content_type="text/html",
+                                 status=200,
+                                 )
 
 
 # async def op_add(request):
@@ -67,32 +81,41 @@ async def op_get_data(request):
 
 async def op_create(request):
     # http://localhost:9999/ravdb/op/create/?name=None&graph_id=None&node_type=input&inputs=null&outputs=[1]&op_type=other&operator=linear&status=computed&params={}
-    name = request.rel_url.query["name"]
-    graph_id = request.rel_url.query["graph_id"]
-    node_type = request.rel_url.query["node_type"]
-    inputs = request.rel_url.query["inputs"]
-    outputs = request.rel_url.query["outputs"]
-    op_type = request.rel_url.query["op_type"]
-    operator = request.rel_url.query["operator"]
-    status = request.rel_url.query["status"]
-    params = request.rel_url.query["params"]
+    data = await request.post()
+    data = dict(data)
 
-    op = ravdb.create_op(
-        name=name,
-        graph_id=graph_id,
-        node_type=node_type,
-        inputs=inputs,
-        outputs=outputs,
-        op_type=op_type,
-        operator=operator,
-        status=status,
-        params=params,
-    )
+    if len(data.keys()) == 0:
+        return web.Response(
+            text=str({"message": "Invalid parameters"}),
+            content_type="text/html",
+            status=400,
+        )
 
-    print("ARGS string:", request.query_string)  # arguments in URL as string
-    print("ARGS       :", request.query)  # arguments in URL as dictionary
+    # name = request.rel_url.query["name"]
+    # graph_id = request.rel_url.query["graph_id"]
+    # node_type = request.rel_url.query["node_type"]
+    # inputs = request.rel_url.query["inputs"]
+    # outputs = request.rel_url.query["outputs"]
+    # op_type = request.rel_url.query["op_type"]
+    # operator = request.rel_url.query["operator"]
+    # status = request.rel_url.query["status"]
+    # params = request.rel_url.query["params"]
 
-    return web.Response(text=str(op), content_type="text/html", status=200)
+    # op = ravdb.create_op(
+    #     name=name,
+    #     graph_id=graph_id,
+    #     node_type=node_type,
+    #     inputs=inputs,
+    #     outputs=outputs,
+    #     op_type=op_type,
+    #     operator=operator,
+    #     status=status,
+    #     params=params,
+    # )
+
+    op = ravdb.create_op(**data)
+
+    return web.Response(text=str({"op_id": op.id}), content_type="text/html", status=200)
 
 
 async def db_create_data(request):
@@ -110,8 +133,12 @@ async def db_create_data(request):
     elif dtype in ["int", "float"]:
         ravdb.update_data(data, value=value)
 
+    data_dict = db_model_to_dict(data)
+
+    return web.json_response()
+
     return web.Response(
-        text=str(data),
+        text=data_dict,
         content_type="text/html",
         status=200,
     )

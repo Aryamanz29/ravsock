@@ -2,10 +2,12 @@ import glob
 import json
 import os
 import shutil
+import time
 
 import numpy as np
+from sqlalchemy_utils import database_exists
 
-from .config import DATA_FILES_PATH
+from .config import DATA_FILES_PATH, RDF_DATABASE_URI
 
 
 def save_data_to_file(data_id, data):
@@ -87,6 +89,22 @@ def reset_database():
     ravdb.drop_database()
     ravdb.create_database()
     ravdb.create_tables()
+
+
+def create_database():
+    from .db import ravdb
+    while not database_exists(RDF_DATABASE_URI):
+        ravdb.create_database()
+        return True
+
+    return False
+
+
+def create_tables():
+    from .db import ravdb
+    if database_exists(RDF_DATABASE_URI):
+        ravdb.create_tables()
+        print("Tables created")
 
 
 def reset():

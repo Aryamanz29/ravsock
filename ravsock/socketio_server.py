@@ -37,6 +37,8 @@ handler = logging.handlers.RotatingFileHandler(RAVSOCK_LOG_FILE)
 
 logger.addHandler(handler)
 
+print(socketio.AsyncServer)
+
 sio = socketio.AsyncServer(
     async_mode="aiohttp", async_handlers=True, logger=True, cors_allowed_origins="*"
 )
@@ -586,20 +588,6 @@ def update_client_op_mapping(op_id, sid, status):
     )
 
 
-@sio.on("op_completed", namespace="/raven-federated")
-async def op_completed(sid, data):
-    # Save the results
-    logger.debug("\nResult received {}".format(data))
-    # data = json.loads(data)
-    print(data)
-    op_id = data["op_id"]
-    logger.debug(
-        "{} {} {} {}".format(
-            op_id, type(data["result"]), data["operator"], data["result"]
-        )
-    )
-
-
 """
 Federated Analytics
 """
@@ -835,81 +823,6 @@ async def get_receive_params(sid, client_data):
             print("Duplicate results")
 
 
-@sio.on("fed_analytics", namespace="/analytics")
-async def get_fed_analytics(sid, client_params):
-    # op = find_op(name="analytics")
-    #
-    # payload = create_payload(op)
-    #
-    # clients = ravdb.
-    #
-    # sio.emit()
-
-    print(client_params)
-    global global_mean, global_min, global_max, global_variance, global_standard_deviation, num_clients, n1, n2
-    if num_clients == 1:
-        n1 = (
-            ts.ckks_tensor_from(context, client_params["size"])
-            .decrypt(secret_key)
-            .tolist()[0]
-        )
-        global_mean = (
-            ts.ckks_tensor_from(context, client_params["Average"])
-            .decrypt(secret_key)
-            .tolist()[0]
-        )
-        global_variance = (
-            ts.ckks_tensor_from(context, client_params["Variance"])
-            .decrypt(secret_key)
-            .tolist()[0]
-        )
-    else:
-        n2 = (
-            ts.ckks_tensor_from(context, client_params["size"])
-            .decrypt(secret_key)
-            .tolist()[0]
-        )
-        m1 = global_mean
-        m2 = (
-            ts.ckks_tensor_from(context, client_params["Average"])
-            .decrypt(secret_key)
-            .tolist()[0]
-        )
-        global_variance = (
-            n1 * global_variance
-            + n2
-            * ts.ckks_tensor_from(context, client_params["Variance"])
-            .decrypt(secret_key)
-            .tolist()[0]
-        ) / (n1 + n2) + ((n1 * n2 * (m1 - m2) ** 2) / (n1 + n2) ** 2)
-        global_mean = global_mean * (n1) / (n1 + n2) + (
-            ts.ckks_tensor_from(context, client_params["Average"])
-            .decrypt(secret_key)
-            .tolist()[0]
-            * n2
-        ) / (n1 + n2)
-    global_min = min(
-        global_min,
-        ts.ckks_tensor_from(context, client_params["Minimum"])
-        .decrypt(secret_key)
-        .tolist()[0],
-    )
-    global_max = max(
-        global_max,
-        ts.ckks_tensor_from(context, client_params["Maximum"])
-        .decrypt(secret_key)
-        .tolist()[0],
-    )
-    global_standard_deviation = np.sqrt(global_variance)
-    print("Global Mean: {}".format(global_mean))
-    print("Global Min: {}".format(global_min))
-    print("Global Max: {}".format(global_max))
-    print("Global Variance: {}".format(global_variance))
-    print("Global Standard Deviation: {}".format(global_standard_deviation))
-    print("----------------------------------")
-    n1 += n2
-
-
 """
 Federated Learning
 """
@@ -934,31 +847,6 @@ async def get_client_status(sid, client_status):
     # Emit op
     logger.debug("Emitting op:{}, {}".format(sid, payload))
     return payload
-
-
-@sio.on("op_completed", namespace="/raven-federated")
-async def op_completed(sid, data):
-    # Save the results
-    logger.debug("\nResult received {}".format(data))
-    print(data)
-    op_id = data["op_id"]
-    logger.debug(
-        "{} {} {} {}".format(
-            op_id, type(data["result"]), data["operator"], data["result"]
-        )
-    )
-    op = RavOp(id=op_id)
-    if data["status"] == "success":
-        data = RavData(value=np.array(data["result"]), dtype="ndarray")
-        # Update op
-        ravdb.update_op(
-            op._op_db, outputs=json.dumps([data.id]), status=OpStatus.COMPUTED
-        )
-        # Update client op mapping
-        mapping = ravdb.find_client_op_mapping(client_id=sid, op_id=op_id)
-        ravdb.update_client_op_mapping(
-            mapping.id, sid=sid, status=MappingStatus.COMPUTED
-        )
 
 
 """
@@ -1002,18 +890,21 @@ async def check_callback(data):
 # We bind our aiohttp endpoint to our app router
 
 app.router.add_get("/", index)
+
 # OPS web endpoints
-app.router.add_get("/ravdb/op/status/", op_status)
-app.router.add_get("/ravdb/op/get/", op_get)
-app.router.add_get("/ravdb/op/refresh/", op_refresh)
-# app.router.add_get('/ravdb/op/add/', op_add)
-app.router.add_get("/ravdb/op/get/data/", op_get_data)
-app.router.add_post("/ravdb/op/create/", op_create)
-app.router.add_get("/ravdb/create/data/", db_create_data)
+app.router.add_post("/op/create/", op_create)
+app.router.add_get("/op/status/", op_status)
+app.router.add_get("/op/get/", op_get)
+app.router.add_get("/op/get/data/", op_get_data)
+
+# Data web endpoints
+app.router.add_post("/data/create/", db_create_data)
+# app.router.add_get("/data/get/", db_create_data)
+# app.router.add_get("/data/get/data", db_create_data)
 
 # Graph web endpoints
-app.router.add_get("/ravdb/graph/create/", graph_create)
-app.router.add_get("/ravdb/graph/get/", graph_get)
-app.router.add_get("/ravdb/graph/op/get/", graph_op_get)
-app.router.add_get("/ravdb/graph/op/delete/", graph_op_delete)
-app.router.add_get("/ravdb/graph/op/name/get/", graph_op_name_get)
+app.router.add_get("/graph/create/", graph_create)
+app.router.add_get("/graph/get/", graph_get)
+app.router.add_get("/graph/op/get/", graph_op_get)
+app.router.add_get("/graph/op/delete/", graph_op_delete)
+app.router.add_get("/graph/op/name/get/", graph_op_name_get)
