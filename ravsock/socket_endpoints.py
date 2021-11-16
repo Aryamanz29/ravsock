@@ -136,7 +136,7 @@ async def db_create_data(request):
 
     # Serialize db object
     data_dict = serialize(data)
-    # Remove key
+    # Remove datetime key
     del data_dict["created_at"]
     print("TYPE == ", type(data), data_dict)
 
@@ -144,16 +144,19 @@ async def db_create_data(request):
 
 
 async def graph_create(request):
-    # http://localhost:9999/ravdb/graph/create/
+    # http://localhost:9999/graph/create/
+
     # Create a new graph
     graph_obj = ravdb.create_graph()
-    graph_id = graph_obj.id
-    print(graph_obj, graph_id)
+    # Serialize db object
+    graph_dict = serialize(graph_obj)
+    # Remove datetime key
+    del graph_dict["created_at"]
 
-    data = {"graph_obj": str(graph_obj), "graph_id": graph_id}
+    print("GRAPH TYPE == ", type(graph_dict), "GRAPH == ", graph_dict)
 
     return web.json_response(
-        data,
+        graph_dict,
         text=None,
         body=None,
         status=200,
@@ -165,81 +168,108 @@ async def graph_create(request):
 
 
 async def graph_get(request):
-    # http://localhost:9999/ravdb/graph/get/?graph_id=1
+    # http://localhost:9999/graph/get/?graph_id=1
+
     graph_id = request.rel_url.query["graph_id"]
-    graph_obj = ravdb.get_graph(graph_id=graph_id)
-    print(graph_id, graph_obj)
+    try:
+        graph_obj = ravdb.get_graph(graph_id=graph_id)
+        # Serialize db object
+        graph_dict = serialize(graph_obj)
+        # Remove datetime key
+        del graph_dict["created_at"]
 
-    data = {"graph_obj": str(graph_obj), "graph_id": graph_id}
+        return web.json_response(
+            graph_dict,
+            text=None,
+            body=None,
+            status=200,
+            reason=None,
+            headers=None,
+            content_type="application/json",
+            dumps=json.dumps,
+        )
 
-    return web.json_response(
-        data,
-        text=None,
-        body=None,
-        status=200,
-        reason=None,
-        headers=None,
-        content_type="application/json",
-        dumps=json.dumps,
-    )
+    except:
+        return web.json_response(
+            {"message": "Invalid Graph id"}, content_type="text/html", status=400
+        )
 
 
 async def graph_op_get(request):
-    # http://localhost:9999/ravdb/graph/op/get/?graph_id=1
-    graph_id = request.rel_url.query["graph_id"]
-    ops = ravdb.get_graph_ops(graph_id=graph_id)
-    print(graph_id, ops)
+    # http://localhost:9999/graph/op/get/?graph_id=1
 
-    data = {"graph_id": graph_id, "ops": ops}
+    try:
+        graph_id = request.rel_url.query["graph_id"]
+        ops = ravdb.get_graph_ops(graph_id=graph_id)
+        print(graph_id, ops)
 
-    return web.json_response(
-        data,
-        text=None,
-        body=None,
-        status=200,
-        reason=None,
-        headers=None,
-        content_type="application/json",
-        dumps=json.dumps,
-    )
+        data = {"graph_id": graph_id, "ops": ops}
+
+        return web.json_response(
+            data,
+            text=None,
+            body=None,
+            status=200,
+            reason=None,
+            headers=None,
+            content_type="application/json",
+            dumps=json.dumps,
+        )
+
+    except:
+        return web.json_response(
+            {"message": "Invalid Graph id"}, content_type="text/html", status=400
+        )
 
 
 async def graph_op_delete(request):
-    # http://localhost:9999/ravdb/graph/op/delete/?graph_db_id=1
-    graph_db_id = request.rel_url.query["graph_db_id"]
-    data = {
-        "graph_obj": ravdb.delete_graph_ops(graph_db_id),
-        "message": "Graph Object has been deleted",
-    }
+    # http://localhost:9999/graph/op/delete/?graph_db_id=1
+    try:
+        graph_db_id = request.rel_url.query["graph_db_id"]
+        data = {
+            "graph_obj": ravdb.delete_graph_ops(graph_db_id),
+            "message": "Graph op has been deleted",
+        }
 
-    return web.json_response(
-        data,
-        text=None,
-        body=None,
-        status=200,
-        reason=None,
-        headers=None,
-        content_type="application/json",
-        dumps=json.dumps,
-    )
+        return web.json_response(
+            data,
+            text=None,
+            body=None,
+            status=200,
+            reason=None,
+            headers=None,
+            content_type="application/json",
+            dumps=json.dumps,
+        )
+    except:
+        return web.json_response(
+            {"message": "Invalid Graph DB id"}, content_type="text/html", status=400
+        )
 
 
 async def graph_op_name_get(request):
-    # http://localhost:9999/ravdb/graph/op/name/get/?op_name=""&graph_id=1
-    op_name = request.rel_url.query["op_name"]
-    graph_id = request.rel_url.query["graph_id"]
-    ops = ravdb.get_ops_by_name(op_name=op_name, graph_id=graph_id)
-    print(op_name, graph_id, ops)
+    # http://localhost:9999/graph/op/name/get/?op_name=""&graph_id=1
+    try:
+        op_name = request.rel_url.query["op_name"]
+        graph_id = request.rel_url.query["graph_id"]
+        ops = ravdb.get_ops_by_name(op_name=op_name, graph_id=graph_id)
+        print(op_name, graph_id, ops)
 
-    data = {"op_name": op_name, "graph_id": graph_id, "ops": ops}
+        data = {"op_name": op_name, "graph_id": graph_id, "ops": ops}
 
-    return web.json_response(
-        data,
-        text=None,
-        body=None,
-        status=200,
-        reason=None,
-        headers=None,
-        content_type="application/json",
-        dumps=json.dumps,
-    )
+        return web.json_response(
+            data,
+            text=None,
+            body=None,
+            status=200,
+            reason=None,
+            headers=None,
+            content_type="application/json",
+            dumps=json.dumps,
+        )
+    except:
+        return web.json_response(
+            {"message": "Invalid op_name or graph_id"},
+            content_type="text/html",
+            status=400,
+        )
