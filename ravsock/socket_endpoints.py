@@ -106,8 +106,8 @@ async def op_create(request):
 # ------ DATA ENDPOINTS ------
 
 
-async def get_data(request):
-    # http://localhost:9999/get/data?data_id=1
+async def data_get(request):
+    # http://localhost:9999/data/get?data_id=1
 
     try:
         data_id = request.rel_url.query["data_id"]
@@ -126,8 +126,8 @@ async def get_data(request):
         )
 
 
-async def create_data(request):
-    # http://localhost:9999/create/data?dtype=int&value=1234
+async def data_create(request):
+    # http://localhost:9999/data/create?dtype=int&value=1234
 
     data = await request.post()
     print(data, type(data))
