@@ -115,6 +115,9 @@ async def get_data(request):
 
         data = ravdb.get_data(data_id=data_id)
         data_dict = serialize(data)
+        print(type(data_dict), data_dict)
+        # Remove datetime key
+        del data_dict["created_at"]
 
         return web.json_response(data_dict, content_type="application/json", status=200)
     except:
