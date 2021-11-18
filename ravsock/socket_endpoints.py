@@ -9,6 +9,8 @@ from sqlalchemy.ext.serializer import loads, dumps
 
 # from ravop.core import t
 
+# ----- Utils -----
+
 
 def db_model_to_dict(obj):
     obj1 = obj.__dict__
@@ -24,6 +26,8 @@ def serialize(model):
     return dict((c, getattr(model, c)) for c in columns)
 
 
+# ------ OPS ENDPOINTS ------
+
 # We can define aiohttp endpoints just as we normally would with no change
 async def index(request):
     with open("index.html") as f:
@@ -32,22 +36,30 @@ async def index(request):
 
 async def op_get(request):
     # http://localhost:9999/op/get/?id=3
-    op_id = request.rel_url.query["id"]
-    print(op_id)
 
-    op = ravdb.get_op(op_id)
+    try:
 
-    if op is None:
+        op_id = request.rel_url.query["id"]
+        print(op_id)
+
+        op_object = ravdb.get_op(op_id)
+        op_dict = serialize(op_object)
+        print(type(op_dict), op_dict)
+
+        # Remove datetime key
+        del op_dict["created_at"]
+
+        return web.json_response(op_dict, content_type="application/json", status=200)
+
+    except:
         return web.json_response(
             {"message": "Invalid op id"}, content_type="text/html", status=400
         )
-    else:
-        op_dict = db_model_to_dict(op)
-        return web.json_response(op_dict, content_type="text/html", status=200)
 
 
 async def op_status(request):
     # http://localhost:9999/op/status/?id=3
+
     op_id = request.rel_url.query["id"]
     print(op_id)
 
@@ -59,40 +71,13 @@ async def op_status(request):
         )
     else:
         return web.json_response(
-            {"status": op.status}, content_type="text/html", status=200
+            {"op_status": op.status}, content_type="application/json", status=200
         )
-
-
-async def op_get_data(request):
-    # http://localhost:9999/op/get/data/?id=3
-    op_id = request.rel_url.query["id"]
-    print(op_id)
-
-    op = ravdb.get_op(op_id)
-
-    if op is None:
-        return web.json_response(
-            {"message": "Invalid op id"}, content_type="text/html", status=400
-        )
-    else:
-        data = ravdb.get_data(op_id)
-        return web.json_response(
-            {"data": data},
-            content_type="text/html",
-            status=200,
-        )
-
-
-# async def op_add(request):
-# http://localhost:9999/op/add/?value1=12354&value2=346
-#     a = t(ast.literal_eval(request.rel_url.query['value1']))
-#     b = t(ast.literal_eval(request.rel_url.query['value2']))
-#     c = a + b
-#     return web.Response(text=str(c.id), content_type='text/html', status=200)
 
 
 async def op_create(request):
     # http://localhost:9999/op/create/?name=None&graph_id=None&node_type=input&inputs=null&outputs=[1]&op_type=other&operator=linear&status=computed&params={}
+
     data = await request.post()
     data = dict(data)
 
@@ -105,13 +90,45 @@ async def op_create(request):
 
     op = ravdb.create_op(**data)
 
-    return web.Response(
-        text=str({"op_id": op.id}), content_type="text/html", status=200
+    return web.json_response(
+        {"op_id": op.id}, content_type="application/json", status=200
     )
 
 
-async def db_create_data(request):
-    # http://localhost:9999/create/data/?dtype=int&value=1234
+# async def op_add(request):
+# http://localhost:9999/op/add/?value1=12354&value2=346
+#     a = t(ast.literal_eval(request.rel_url.query['value1']))
+#     b = t(ast.literal_eval(request.rel_url.query['value2']))
+#     c = a + b
+#     return web.Response(text=str(c.id), content_type='text/html', status=200)
+
+
+# ------ DATA ENDPOINTS ------
+
+
+async def data_get(request):
+    # http://localhost:9999/data/get?data_id=1
+
+    try:
+        data_id = request.rel_url.query["data_id"]
+        print(data_id)
+
+        data = ravdb.get_data(data_id=data_id)
+        data_dict = serialize(data)
+        print(type(data_dict), data_dict)
+        # Remove datetime key
+        del data_dict["created_at"]
+
+        return web.json_response(data_dict, content_type="application/json", status=200)
+    except:
+        return web.json_response(
+            {"message": "Invalid Data id"}, content_type="text/html", status=400
+        )
+
+
+async def data_create(request):
+    # http://localhost:9999/data/create?dtype=int&value=1234
+
     data = await request.post()
     print(data, type(data))
     value = int(data["value"])
@@ -136,11 +153,15 @@ async def db_create_data(request):
 
     # Serialize db object
     data_dict = serialize(data)
+
     # Remove datetime key
     del data_dict["created_at"]
     print("TYPE == ", type(data), data_dict)
 
     return web.json_response(data_dict, content_type="application/json", status=200)
+
+
+# ------ GRAPH ENDPOINTS ------
 
 
 async def graph_create(request):
@@ -249,6 +270,7 @@ async def graph_op_delete(request):
 
 async def graph_op_name_get(request):
     # http://localhost:9999/graph/op/name/get/?op_name=""&graph_id=1
+
     try:
         op_name = request.rel_url.query["op_name"]
         graph_id = request.rel_url.query["graph_id"]
