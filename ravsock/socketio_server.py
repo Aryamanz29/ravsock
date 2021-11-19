@@ -894,12 +894,15 @@ app.router.add_get("/", index)
 # OPS web endpoints
 app.router.add_post("/op/create/", op_create)
 app.router.add_get("/op/get/", op_get)
+app.router.add_get("/op/get/name/", op_get_by_name)
+app.router.add_get("/op/get/all/", op_get_all)
 app.router.add_get("/op/status/", op_status)
 
 # Data web endpoints
 app.router.add_post("/data/create/", data_create)
 app.router.add_get("/data/get/", data_get)
 app.router.add_get("/data/get/data/", data_get_data)
+app.router.add_get("/data/delete/", data_delete)
 
 # Graph web endpoints
 app.router.add_get("/graph/create/", graph_create)

@@ -89,8 +89,6 @@ def copy_data(source, destination):
 
 def reset_database():
     from .db import ravdb
-
-    print('ss')
     ravdb.drop_database()
     ravdb.create_database()
     ravdb.create_tables()
