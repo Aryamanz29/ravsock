@@ -1,11 +1,13 @@
 import json
 import os
-import numpy as np
-from sqlalchemy.orm import class_mapper
+
 from aiohttp import web
+from sqlalchemy.orm import class_mapper
+
+from .config import BASE_DIR
 from .db import ravdb
-from .utils import dump_data, copy_data
-from sqlalchemy.ext.serializer import loads, dumps
+from .utils import dump_data, copy_data, convert_str_to_ndarray, load_data_from_file, convert_ndarray_to_str
+
 
 # from ravop.core import t
 
@@ -78,7 +80,7 @@ async def op_status(request):
 async def op_create(request):
     # http://localhost:9999/op/create/?name=None&graph_id=None&node_type=input&inputs=null&outputs=[1]&op_type=other&operator=linear&status=computed&params={}
 
-    data = await request.post()
+    data = await request.json()
     data = dict(data)
 
     if len(data.keys()) == 0:
@@ -89,9 +91,13 @@ async def op_create(request):
         )
 
     op = ravdb.create_op(**data)
+    op_dict = serialize(op)
+
+    # Remove datetime key
+    del op_dict["created_at"]
 
     return web.json_response(
-        {"op_id": op.id}, content_type="application/json", status=200
+        op_dict, content_type="application/json", status=200
     )
 
 
@@ -105,36 +111,15 @@ async def op_create(request):
 
 # ------ DATA ENDPOINTS ------
 
-
-async def data_get(request):
-    # http://localhost:9999/data/get?data_id=1
-
-    try:
-        data_id = request.rel_url.query["data_id"]
-        print(data_id)
-
-        data = ravdb.get_data(data_id=data_id)
-        data_dict = serialize(data)
-        print(type(data_dict), data_dict)
-        # Remove datetime key
-        del data_dict["created_at"]
-
-        return web.json_response(data_dict, content_type="application/json", status=200)
-    except:
-        return web.json_response(
-            {"message": "Invalid Data id"}, content_type="text/html", status=400
-        )
-
-
 async def data_create(request):
     # http://localhost:9999/data/create?dtype=int&value=1234
 
-    data = await request.post()
-    print(data, type(data))
-    value = int(data["value"])
+    data = await request.json()
+    print("Request data:", data, type(data))
+    value = convert_str_to_ndarray(data['value'])
     dtype = data["dtype"]
 
-    data = ravdb.create_data(type=dtype)
+    data = ravdb.create_data(dtype=dtype)
     print("TYPE ===", type(data), "DATA == ", data)
 
     if dtype == "ndarray":
@@ -154,11 +139,63 @@ async def data_create(request):
     # Serialize db object
     data_dict = serialize(data)
 
+    if data.file_path is not None:
+        data_dict["value"] = convert_ndarray_to_str(load_data_from_file(data.file_path))
+
     # Remove datetime key
     del data_dict["created_at"]
+    del data_dict["file_path"]
+
     print("TYPE == ", type(data), data_dict)
 
     return web.json_response(data_dict, content_type="application/json", status=200)
+
+
+async def data_get(request):
+    # http://localhost:9999/data/get?id=1
+
+    try:
+        data_id = request.rel_url.query["id"]
+        print(data_id)
+
+        data = ravdb.get_data(data_id=data_id)
+        data_dict = serialize(data)
+        print(type(data_dict), data_dict)
+
+        if data.file_path is not None:
+            if data.type == "ndarray":
+                data_dict["value"] = load_data_from_file(data.file_path).tolist()
+            else:
+                data_dict["value"] = load_data_from_file(data.file_path)
+
+        # Remove datetime key
+        del data_dict["created_at"]
+        del data_dict["file_path"]
+
+        return web.json_response(data_dict, content_type="application/json", status=200)
+    except Exception as e:
+        print("Error:", str(e))
+        return web.json_response(
+            {"message": "Invalid Data id"}, content_type="text/html", status=400
+        )
+
+
+async def data_get_data(request):
+    # http://localhost:9999/data/get/data/?id=1
+
+    try:
+        data_id = request.rel_url.query["id"]
+        print(data_id)
+
+        data = ravdb.get_data(data_id=data_id)
+
+        value = convert_ndarray_to_str(load_data_from_file(data.file_path))
+
+        return web.json_response({"value": value}, content_type="application/json", status=200)
+    except:
+        return web.json_response(
+            {"message": "Invalid Data id"}, content_type="text/html", status=400
+        )
 
 
 # ------ GRAPH ENDPOINTS ------

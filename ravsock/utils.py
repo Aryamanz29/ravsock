@@ -1,6 +1,7 @@
 import glob
 import json
 import os
+import pickle
 import shutil
 import time
 
@@ -28,8 +29,11 @@ def save_data_to_file(data_id, data):
     return file_path
 
 
-def load_data_from_file():
-    pass
+def load_data_from_file(file_path):
+    print("File path:", file_path)
+    with open(file_path, 'rb') as f:
+        x = pickle.load(f)
+        return x
 
 
 def delete_data_file(data_id):
@@ -86,6 +90,7 @@ def copy_data(source, destination):
 def reset_database():
     from .db import ravdb
 
+    print('ss')
     ravdb.drop_database()
     ravdb.create_database()
     ravdb.create_tables()
@@ -108,17 +113,32 @@ def create_tables():
 
 
 def reset():
-    for file_path in glob.glob("files/*"):
+    # Delete and create database
+    reset_database()
+
+    for file_path in glob.glob(os.path.join(DATA_FILES_PATH, "*")):
         if os.path.exists(file_path):
             os.remove(file_path)
 
-    if not os.path.exists("files"):
-        os.makedirs("files")
-
-    # Delete and create database
-    reset_database()
+    if not os.path.exists(DATA_FILES_PATH):
+        os.makedirs(DATA_FILES_PATH)
 
     # Clear redis queues
     from .db import clear_redis_queues
 
     clear_redis_queues()
+
+
+def convert_str_to_ndarray(x):
+    if isinstance(x, str):
+        x = np.array(json.loads(x))
+    elif isinstance(x, list) or isinstance(x, tuple):
+        x = np.array(x)
+    elif isinstance(x, int) or isinstance(x, float):
+        pass
+
+    return x
+
+
+def convert_ndarray_to_str(x):
+    return str(x.tolist())

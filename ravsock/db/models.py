@@ -35,7 +35,7 @@ class Graph(Base):
 class Data(Base):
     __tablename__ = "data"
     id = Column(Integer, primary_key=True)
-    type = Column(String(20), nullable=False)
+    dtype = Column(String(20), nullable=False)
     file_path = Column(String(200), nullable=True)
     value = Column(String(100), nullable=True)
 

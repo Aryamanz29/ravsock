@@ -899,6 +899,7 @@ app.router.add_get("/op/status/", op_status)
 # Data web endpoints
 app.router.add_post("/data/create/", data_create)
 app.router.add_get("/data/get/", data_get)
+app.router.add_get("/data/get/data/", data_get_data)
 
 # Graph web endpoints
 app.router.add_get("/graph/create/", graph_create)
