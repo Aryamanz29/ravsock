@@ -114,20 +114,20 @@ class DBManager(object):
 
         return obj
 
-    def update(self, name, id, **kwargs):
-        if name == "op":
+    def update(self, n, id, **kwargs):
+        if n == "op":
             obj = self.session.query(Op).get(id)
-        elif name == "data":
+        elif n == "data":
             obj = self.session.query(Data).get(id)
-        elif name == "graph":
+        elif n == "graph":
             obj = self.session.query(Graph).get(id)
-        elif name == "client":
+        elif n == "client":
             obj = self.session.query(Client).get(id)
-        elif name == "objective":
+        elif n == "objective":
             obj = self.session.query(Objective).get(id)
-        elif name == "objective_client_mapping":
+        elif n == "objective_client_mapping":
             obj = self.session.query(ObjectiveClientMapping).get(id)
-        elif name == "client_sid_mapping":
+        elif n == "client_sid_mapping":
             obj = self.session.query(ClientSIDMapping).get(id)
         else:
             obj = None

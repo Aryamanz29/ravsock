@@ -1,9 +1,7 @@
 import glob
 import json
 import os
-import pickle
 import shutil
-import time
 
 import numpy as np
 from sqlalchemy_utils import database_exists
@@ -31,9 +29,8 @@ def save_data_to_file(data_id, data):
 
 def load_data_from_file(file_path):
     print("File path:", file_path)
-    with open(file_path, 'rb') as f:
-        x = pickle.load(f)
-        return x
+    x = np.load(file_path)
+    return x
 
 
 def delete_data_file(data_id):
@@ -64,11 +61,11 @@ def dump_data(data_id, value):
     """
     Dump ndarray to file
     """
-    file_path = os.path.join(DATA_FILES_PATH, "data_{}.pkl".format(data_id))
+    file_path = os.path.join(DATA_FILES_PATH, "data_{}.npy".format(data_id))
     if os.path.exists(file_path):
         os.remove(file_path)
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
-    value.dump(file_path)
+    np.save(file_path, value)
     return file_path
 
 
@@ -127,16 +124,41 @@ def reset():
     clear_redis_queues()
 
 
-def convert_str_to_ndarray(x):
+def convert_to_ndarray(x):
     if isinstance(x, str):
         x = np.array(json.loads(x))
-    elif isinstance(x, list) or isinstance(x, tuple):
+    elif isinstance(x, list) or isinstance(x, tuple) or isinstance(x, int) or isinstance(x, float):
         x = np.array(x)
-    elif isinstance(x, int) or isinstance(x, float):
-        pass
 
     return x
 
 
+def parse_string(x):
+    x = json.loads(x)
+
+
+
 def convert_ndarray_to_str(x):
     return str(x.tolist())
+
+
+def find_dtype(x):
+    if isinstance(x, np.ndarray):
+        return "ndarray"
+    elif isinstance(x, int):
+        return "int"
+    elif isinstance(x, float):
+        return "float"
+    else:
+        return None
+
+
+def get_rank_dtype(data):
+    rank = len(np.array(data).shape)
+
+    if rank == 0:
+        return rank, np.array(data).dtype.name
+    elif rank == 1:
+        return rank, np.array(data).dtype.name
+    else:
+        return rank, np.array(data).dtype.name

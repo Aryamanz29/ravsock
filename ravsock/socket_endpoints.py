@@ -9,10 +9,10 @@ from .db import ravdb
 from .utils import (
     dump_data,
     copy_data,
-    convert_str_to_ndarray,
+    convert_to_ndarray,
     load_data_from_file,
     convert_ndarray_to_str,
-)
+    find_dtype)
 
 
 # from ravop.core import t
@@ -198,33 +198,36 @@ async def data_create(request):
     try:
         data = await request.json()
         print("Request data:", data, type(data))
-        value = convert_str_to_ndarray(data["value"])
-        dtype = data["dtype"]
+        value = convert_to_ndarray(data["value"])
+        dtype = value.dtype
 
         data = ravdb.create_data(dtype=dtype)
         print("TYPE ===", type(data), "DATA == ", data)
 
-        if dtype == "ndarray":
-            file_path = dump_data(data.id, value)
-            # Update file path
-            ravdb.update_data(data, file_path=file_path)
-        elif dtype in ["int", "float"]:
-            ravdb.update_data(data, value=value)
+        # if dtype == "ndarray":
+        #     file_path = dump_data(data.id, value)
+        #     # Update file path
+        #     ravdb.update_data(data, file_path=file_path)
+        # elif dtype in ["int", "float"]:
 
-        elif dtype == "file":
-            filepath = os.path.join(
-                os.path.join(BASE_DIR, "files"), "data_{}_{}".format(data.id, value)
-            )
-            copy_data(source=value, destination=filepath)
-            ravdb.update_data(data, file_path=filepath)
+        file_path = dump_data(data.id, value)
+        # Update file path
+        ravdb.update_data(data, file_path=file_path)
+
+        # ravdb.update_data(data, value=value)
+
+        # elif dtype == "file":
+        #     filepath = os.path.join(
+        #         os.path.join(BASE_DIR, "files"), "data_{}_{}".format(data.id, value)
+        #     )
+        #     copy_data(source=value, destination=filepath)
+        #     ravdb.update_data(data, file_path=filepath)
 
         # Serialize db object
         data_dict = serialize(data)
 
         if data.file_path is not None:
-            data_dict["value"] = convert_ndarray_to_str(
-                load_data_from_file(data.file_path)
-            )
+            data_dict["value"] = load_data_from_file(data.file_path).tolist()
 
         # Remove datetime key
         del data_dict["created_at"]
@@ -249,33 +252,47 @@ async def data_get(request):
     params = id(data_id) : int/str
     """
 
-    try:
-        data_id = request.rel_url.query["id"]
-        print(data_id)
+    # try:
+    data_id = request.rel_url.query["id"]
+    print(data_id)
 
-        data = ravdb.get_data(data_id=data_id)
-        data_dict = serialize(data)
-        print(type(data_dict), data_dict)
+    if data_id is None:
+        return web.json_response(
+                   {"message": "Data id parameter is required"}, content_type="text/html", status=400
+               )
 
-        if data.file_path is not None:
-            if data.dtype == "ndarray":
-                data_dict["value"] = load_data_from_file(data.file_path).tolist()
-            else:
-                data_dict["value"] = load_data_from_file(data.file_path)
+    data = ravdb.get_data(data_id=data_id)
 
-        # Remove datetime key
-        del data_dict["created_at"]
-        del data_dict["file_path"]
-
-        return web.json_response(data_dict, content_type="application/json", status=200)
-
-    except Exception as e:
-
-        print("\nDATA GET ENDPOINT ERROR : ", str(e))
-
+    if data is None:
         return web.json_response(
             {"message": "Invalid Data id"}, content_type="text/html", status=400
         )
+
+    data_dict = serialize(data)
+    print(type(data_dict), data_dict)
+
+    if data.file_path is not None:
+        # if data.dtype == "ndarray":
+        #     data_dict["value"] = load_data_from_file(data.file_path).tolist()
+        # else:
+
+        data_dict["value"] = load_data_from_file(data.file_path).tolist()
+
+    # Remove datetime key
+    del data_dict["created_at"]
+    del data_dict["file_path"]
+
+    print(data_dict)
+
+    return web.json_response(data_dict, content_type="application/json", status=200)
+
+    # except Exception as e:
+    #
+    #     print("\nDATA GET ENDPOINT ERROR : ", str(e))
+    #
+    #     return web.json_response(
+    #         {"message": "Invalid Data id"}, content_type="text/html", status=400
+    #     )
 
 
 async def data_get_data(request):
@@ -291,7 +308,7 @@ async def data_get_data(request):
 
         data = ravdb.get_data(data_id=data_id)
 
-        value = convert_ndarray_to_str(load_data_from_file(data.file_path))
+        value = load_data_from_file(data.file_path).tolist()
 
         return web.json_response(
             {"value": value}, content_type="application/json", status=200
@@ -336,8 +353,13 @@ async def data_delete(request):
 async def graph_create(request):
     # http://localhost:9999/graph/create/
     try:
+        data = await request.json()
+        print(data)
+
         # Create a new graph
         graph_obj = ravdb.create_graph()
+        ravdb.update("graph", id=graph_obj.id, **data)
+
         # Serialize db object
         graph_dict = serialize(graph_obj)
         # Remove datetime key

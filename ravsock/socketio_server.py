@@ -905,7 +905,7 @@ app.router.add_get("/data/get/data/", data_get_data)
 app.router.add_get("/data/delete/", data_delete)
 
 # Graph web endpoints
-app.router.add_get("/graph/create/", graph_create)
+app.router.add_post("/graph/create/", graph_create)
 app.router.add_get("/graph/get/", graph_get)
 app.router.add_get("/graph/op/get/", graph_op_get)
 app.router.add_get("/graph/op/delete/", graph_op_delete)
