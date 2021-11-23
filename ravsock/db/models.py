@@ -12,7 +12,9 @@ class Graph(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String(50), nullable=True, default=None)
 
-    algorithm = Column(String(50), nullable=True, default=None)  # mean, mode, linear_regression, logistic
+    algorithm = Column(
+        String(50), nullable=True, default=None
+    )  # mean, mode, linear_regression, logistic
     approach = Column(String(50), nullable=True, default=None)  # distributed, federated
 
     # Store list of data ids
