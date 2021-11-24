@@ -232,7 +232,7 @@ class DBManager(object):
         return self.session.query(Op).filter(Op.graph_id == graph_id).all()
 
     def delete_graph_ops(self, graph_id):
-        print("Deleting graph ops")
+        print("Deleting graph ops...")
         ops = self.get_graph_ops(graph_id=graph_id)
 
         for op in ops:
@@ -242,13 +242,14 @@ class DBManager(object):
                 for data_id in data_ids:
                     print("Data id:{}".format(data_id))
 
+                    print("Deleting Data file...")
                     # Delete data file
                     delete_data_file(data_id)
 
+                    print("Deleting Data object...")
                     # Delete data object
                     self.delete_data(data_id)
-
-            # Delete op object
+            print("Deleting op...")
             self.delete(op)
 
     def create_client(self, **kwargs):

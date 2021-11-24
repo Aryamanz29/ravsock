@@ -25,7 +25,9 @@ RDF_REDIS_HOST = os.environ.get("RDF_REDIS_HOST", "localhost")
 RDF_REDIS_PORT = os.environ.get("RDF_REDIS_PORT", "6379")
 RDF_REDIS_DB = os.environ.get("RDF_REDIS_DB", "0")
 
-RDF_DATABASE_URI = os.environ.get("RDF_DATABASE_URI", "sqlite:///{}/rdf.db?check_same_thread=False".format(BASE_DIR))
+RDF_DATABASE_URI = os.environ.get(
+    "RDF_DATABASE_URI", "sqlite:///{}/rdf.db?check_same_thread=False".format(BASE_DIR)
+)
 
 FTP_SERVER_URL = "54.201.212.222"
 # FTP_SERVER_URL = "localhost"

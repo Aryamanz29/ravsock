@@ -12,7 +12,9 @@ from .utils import (
     convert_to_ndarray,
     load_data_from_file,
     convert_ndarray_to_str,
-    find_dtype)
+    find_dtype,
+    get_op_stats,
+)
 
 
 # from ravop.core import t
@@ -82,7 +84,7 @@ async def op_create(request):
 async def op_get(request):
     # http://localhost:9999/op/get/?id=3
     """
-    params = id(op_id) : int/str
+    params = id(op_id) : int
     """
     try:
 
@@ -108,7 +110,7 @@ async def op_get(request):
 async def op_get_by_name(request):
     # http://localhost:9999/op/get/name/?op_name="None"&id="None"
     """
-    params = op_name : str, id(graph_id) : int/str
+    params = op_name : str, id(graph_id) : int
     """
     try:
         op_name = request.rel_url.query["op_name"]
@@ -167,7 +169,7 @@ async def op_get_all(request):
 async def op_status(request):
     # http://localhost:9999/op/status/?id=3
     """
-    params = id(op_id) : int/str
+    params = id(op_id) : int
     returns = status(str)
     """
 
@@ -186,6 +188,40 @@ async def op_status(request):
         )
 
 
+async def op_delete(request):
+    # http://localhost:9999/op/delete/?id=1
+    """
+    params  = id(op_id) : int
+    """
+    try:
+        op_id = request.rel_url.query["id"]
+        op_object = ravdb.get_op(op_id)
+        ravdb.delete(op_obj)
+        data = {
+            "op_id": op_id,
+            "message": "Op has been deleted successfully",
+        }
+
+        return web.json_response(
+            data,
+            text=None,
+            body=None,
+            status=200,
+            reason=None,
+            headers=None,
+            content_type="application/json",
+            dumps=json.dumps,
+        )
+
+    except Exception as e:
+
+        print("\nOP DELETE ENDPOINT ERROR : ", str(e))
+
+        return web.json_response(
+            {"message": "Invalid OP id"}, content_type="text/html", status=400
+        )
+
+
 # ------ DATA ENDPOINTS ------
 
 
@@ -199,31 +235,16 @@ async def data_create(request):
         data = await request.json()
         print("Request data:", data, type(data))
         value = convert_to_ndarray(data["value"])
+        print(value)
         dtype = value.dtype
-
-        data = ravdb.create_data(dtype=dtype)
+        print(dtype, type(dtype))
+        data = ravdb.create_data(dtype=str(dtype))
+        print(data)
         print("TYPE ===", type(data), "DATA == ", data)
-
-        # if dtype == "ndarray":
-        #     file_path = dump_data(data.id, value)
-        #     # Update file path
-        #     ravdb.update_data(data, file_path=file_path)
-        # elif dtype in ["int", "float"]:
-
         file_path = dump_data(data.id, value)
+
         # Update file path
         ravdb.update_data(data, file_path=file_path)
-
-        # ravdb.update_data(data, value=value)
-
-        # elif dtype == "file":
-        #     filepath = os.path.join(
-        #         os.path.join(BASE_DIR, "files"), "data_{}_{}".format(data.id, value)
-        #     )
-        #     copy_data(source=value, destination=filepath)
-        #     ravdb.update_data(data, file_path=filepath)
-
-        # Serialize db object
         data_dict = serialize(data)
 
         if data.file_path is not None:
@@ -249,7 +270,7 @@ async def data_create(request):
 async def data_get(request):
     # http://localhost:9999/data/get?id=1
     """
-    params = id(data_id) : int/str
+    params = id(data_id) : int
     """
 
     # try:
@@ -258,8 +279,10 @@ async def data_get(request):
 
     if data_id is None:
         return web.json_response(
-                   {"message": "Data id parameter is required"}, content_type="text/html", status=400
-               )
+            {"message": "Data id parameter is required"},
+            content_type="text/html",
+            status=400,
+        )
 
     data = ravdb.get_data(data_id=data_id)
 
@@ -272,10 +295,6 @@ async def data_get(request):
     print(type(data_dict), data_dict)
 
     if data.file_path is not None:
-        # if data.dtype == "ndarray":
-        #     data_dict["value"] = load_data_from_file(data.file_path).tolist()
-        # else:
-
         data_dict["value"] = load_data_from_file(data.file_path).tolist()
 
     # Remove datetime key
@@ -298,7 +317,7 @@ async def data_get(request):
 async def data_get_data(request):
     # http://localhost:9999/data/get/data/?id=1
     """
-    params = id(data_id) : int/str
+    params = id(data_id) : int
     returns = data
     """
 
@@ -389,6 +408,10 @@ async def graph_create(request):
 
 async def graph_get(request):
     # http://localhost:9999/graph/get/?id=1
+    """
+    params = id(graph_id) : int
+    returns = graph_dict
+    """
 
     try:
         graph_id = request.rel_url.query["id"]
@@ -418,18 +441,69 @@ async def graph_get(request):
         )
 
 
+async def graph_get_all(request):
+    # http://localhost:9999/graph/get/all
+    """
+    returns = list(graph_dicts)
+    """
+
+    try:
+        graph_objs = ravdb.get_all_graphs()
+        graph_dicts = []
+
+        for graph in graph_objs:
+            graph_dict = serialize(graph)
+            # Remove datetime key
+            del graph_dict["created_at"]
+            graph_dicts.append(graph_dict)
+
+        return web.json_response(
+            graph_dicts, content_type="application/json", status=200
+        )
+
+        return web.json_response(
+            graph_dict,
+            text=None,
+            body=None,
+            status=200,
+            reason=None,
+            headers=None,
+            content_type="application/json",
+            dumps=json.dumps,
+        )
+
+    except Exception as e:
+
+        print("\nGRAPH GET ALL ENDPOINT ERROR : ", str(e))
+
+        return web.json_response(
+            {"message": "Unable to get all graphs"},
+            content_type="text/html",
+            status=400,
+        )
+
+
 async def graph_op_get(request):
     # http://localhost:9999/graph/op/get/?id=1
+    """
+    params  = id(graph_id) : int
+    returns = list(ops associate with a graph)
+    """
 
     try:
         graph_id = request.rel_url.query["id"]
         ops = ravdb.get_graph_ops(graph_id=graph_id)
-        print(graph_id, ops)
 
-        data = {"graph_id": graph_id, "ops": ops}
+        ops_dicts = []
+
+        for op in ops:
+            op_dict = serialize(op)
+            # Remove datetime key
+            del op_dict["created_at"]
+            ops_dicts.append(op_dict)
 
         return web.json_response(
-            data,
+            ops_dicts,
             text=None,
             body=None,
             status=200,
@@ -448,14 +522,129 @@ async def graph_op_get(request):
         )
 
 
-async def graph_op_delete(request):
-    # http://localhost:9999/graph/op/delete/?id=1
+async def graph_op_name_get(request):
+    # http://localhost:9999/graph/op/name/get/?op_name=""&id=1
+
     try:
-        graph_db_id = request.rel_url.query["id"]
-        ravdb.delete_graph_ops(graph_db_id)
+        op_name = request.rel_url.query["op_name"]
+        graph_id = request.rel_url.query["id"]
+        ops = ravdb.get_ops_by_name(op_name=op_name, graph_id=graph_id)
+
+        ops_dicts = []
+
+        for op in ops:
+            op_dict = serialize(op)
+            # Remove datetime key
+            del op_dict["created_at"]
+            ops_dicts.append(op_dict)
+
+        return web.json_response(
+            ops_dicts,
+            text=None,
+            body=None,
+            status=200,
+            reason=None,
+            headers=None,
+            content_type="application/json",
+            dumps=json.dumps,
+        )
+    except Exception as e:
+
+        print("\nGRAPH OP NAME GET ENDPOINT ERROR : ", str(e))
+
+        return web.json_response(
+            {"message": "Invalid op_name or graph id"},
+            content_type="text/html",
+            status=400,
+        )
+
+
+async def graph_op_get_stats(request):
+    # http://localhost:9999/graph/op/get/stats/?id=4
+    """
+    Get stats of all ops
+    params  = id(graph_id) : int
+    """
+
+    try:
+        graph_id = request.rel_url.query["id"]
+        ops = ravdb.get_graph_ops(graph_id=graph_id)
+        stats = get_op_stats(ops)
+
+        return web.json_response(
+            stats,
+            text=None,
+            body=None,
+            status=200,
+            reason=None,
+            headers=None,
+            content_type="application/json",
+            dumps=json.dumps,
+        )
+
+    except Exception as e:
+
+        print("\nGRAPH STATS ENDPOINT ERROR : ", str(e))
+
+        return web.json_response(
+            {"message": "Invalid Graph id"}, content_type="text/html", status=400
+        )
+
+
+async def graph_get_progress(request):
+    # http://localhost:9999/graph/op/get/progress/?id=4
+
+    """
+    Get Graph Ops Progress
+    params  = id(graph_id) : int
+    """
+
+    try:
+
+        graph_id = request.rel_url.query["id"]
+        ops = ravdb.get_graph_ops(graph_id=graph_id)
+        stats = get_op_stats(ops)
+
+        if stats["total_ops"] == 0:
+            return 0
+        progress = (
+            (stats["computed_ops"] + stats["computing_ops"] + stats["failed_ops"])
+            / stats["total_ops"]
+        ) * 100
+
+        return web.json_response(
+            {"progress": progress},
+            text=None,
+            body=None,
+            status=200,
+            reason=None,
+            headers=None,
+            content_type="application/json",
+            dumps=json.dumps,
+        )
+
+    except Exception as e:
+
+        print("\nGRAPH STATS ENDPOINT ERROR : ", str(e))
+
+        return web.json_response(
+            {"message": "Invalid Graph id"}, content_type="text/html", status=400
+        )
+
+
+async def graph_delete(request):
+    # http://localhost:9999/graph/delete/?id=1
+    """
+    params  = id(graph_id) : int
+    """
+
+    try:
+        graph_id = request.rel_url.query["id"]
+        graph_obj = ravdb.get_graph(graph_id=graph_id)
+        ravdb.delete(graph_obj)
         data = {
-            "graph_db_id": graph_db_id,
-            "message": "Graph op has been deleted successfully",
+            "graph_id": graph_id,
+            "message": "Graph has been deleted successfully",
         }
 
         return web.json_response(
@@ -475,36 +664,4 @@ async def graph_op_delete(request):
 
         return web.json_response(
             {"message": "Invalid Graph id"}, content_type="text/html", status=400
-        )
-
-
-async def graph_op_name_get(request):
-    # http://localhost:9999/graph/op/name/get/?op_name=""&id=1
-
-    try:
-        op_name = request.rel_url.query["op_name"]
-        graph_id = request.rel_url.query["id"]
-        ops = ravdb.get_ops_by_name(op_name=op_name, graph_id=graph_id)
-        print(op_name, graph_id, ops)
-
-        data = {"op_name": op_name, "graph_id": graph_id, "ops": ops}
-
-        return web.json_response(
-            data,
-            text=None,
-            body=None,
-            status=200,
-            reason=None,
-            headers=None,
-            content_type="application/json",
-            dumps=json.dumps,
-        )
-    except Exception as e:
-
-        print("\nGRAPH OP NAME GET ENDPOINT ERROR : ", str(e))
-
-        return web.json_response(
-            {"message": "Invalid op_name or graph id"},
-            content_type="text/html",
-            status=400,
         )
