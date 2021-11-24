@@ -147,7 +147,7 @@ async def op_get_all(request):
     try:
 
         ops = ravdb.get_all_ops()
-        print(type(ops), ops)
+        # print(type(ops), ops)
         ops_dicts = []
         for op in ops:
             op_dict = serialize(op)
@@ -195,7 +195,7 @@ async def op_delete(request):
     """
     try:
         op_id = request.rel_url.query["id"]
-        op_object = ravdb.get_op(op_id)
+        op_obj = ravdb.get_op(op_id)
         ravdb.delete(op_obj)
         data = {
             "op_id": op_id,
@@ -629,6 +629,49 @@ async def graph_get_progress(request):
 
         return web.json_response(
             {"message": "Invalid Graph id"}, content_type="text/html", status=400
+        )
+
+async def graph_op_delete(request):
+    # http://localhost:9999/graph/op/delete/?id=1
+    """
+    It deletes Ops & data objects associated with the given graph
+    params  = id(graph_id) : int
+    """
+    try :
+        graph_id = request.rel_url.query["id"]
+        graph_obj = ravdb.get_graph(graph_id=graph_id)
+        
+        if graph_obj is None :
+            return web.json_response(
+            {"message": "Invalid Graph id"}, content_type="text/html", status=400
+            )
+
+        else :
+            if ravdb.delete_graph_ops(graph_id):
+                data = {
+                    "graph_id": graph_id,
+                    "message": "Graph Ops has been deleted successfully",
+                }
+
+                return web.json_response(
+                    data,
+                    text=None,
+                    body=None,
+                    status=200,
+                    reason=None,
+                    headers=None,
+                    content_type="application/json",
+                    dumps=json.dumps,
+                )
+            else :
+                   return web.json_response({"message": "No ops accociate with this graph!"}, content_type="text/html", status=400)
+
+    except Exception as e:
+
+        print("\nGRAPH OP DELETE ENDPOINT ERROR : ", str(e))
+
+        return web.json_response(
+            {"message": "Graph Ops already been deleted"}, content_type="text/html", status=400
         )
 
 
