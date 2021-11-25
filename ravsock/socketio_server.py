@@ -9,7 +9,7 @@ import threading
 import numpy as np
 import socketio
 
-# import tenseal as ts
+import tenseal as ts
 from aiohttp import web
 from sqlalchemy import or_
 from .config import WAIT_INTERVAL_TIME, PARAMS_FOLDER, CONTEXT_FOLDER, RAVSOCK_LOG_FILE
@@ -19,12 +19,9 @@ from .db import (
     ObjectiveClientMapping
 )
 
-# from ravop.core.c import Op as RavOp
-from ravop.core.c import Data as RavData
-
 from .config import QUEUE_COMPUTING, QUEUE_LOW_PRIORITY,QUEUE_HIGH_PRIORITY
-# from .encryption import get_context, load_context, dump_context
-# from .ftp import get_client, check_credentials, add_user
+from .encryption import get_context, load_context, dump_context
+from .ftp import get_client, check_credentials, add_user
 from .strings import OpStatus, MappingStatus, GraphStatus, functions
 from .db import ravdb
 from .socket_endpoints import *
@@ -699,201 +696,201 @@ def row2dict(row):
     return d
 
 
-# @sio.on("receive_params", namespace="/analytics")
-# async def get_receive_params(sid, client_data):
-#     if client_data.get("objective_id", None) is not None:
-#         print("Client params:", client_data)
+@sio.on("receive_params", namespace="/analytics")
+async def get_receive_params(sid, client_data):
+    if client_data.get("objective_id", None) is not None:
+        print("Client params:", client_data)
 
-#         objective_id = client_data["objective_id"]
-#         client = ravdb.get_client_by_sid(sid)
-#         objective = ravdb.get_objective(objective_id=objective_id)
-#         objective_client_mapping = ravdb.find_objective_client_mapping(
-#             objective_id=objective_id, client_id=client.id
-#         )
+        objective_id = client_data["objective_id"]
+        client = ravdb.get_client_by_sid(sid)
+        objective = ravdb.get_objective(objective_id=objective_id)
+        objective_client_mapping = ravdb.find_objective_client_mapping(
+            objective_id=objective_id, client_id=client.id
+        )
 
-#         if not objective_client_mapping.status == MappingStatus.COMPUTED:
-#             # 1. Load context
-#             ckks_context = load_context(
-#                 os.path.join(
-#                     CONTEXT_FOLDER, json.loads(client.context)["context_filename"]
-#                 )
-#             )
-#             secret_key = ckks_context.secret_key()
-#             print(secret_key, ckks_context)
+        if not objective_client_mapping.status == MappingStatus.COMPUTED:
+            # 1. Load context
+            ckks_context = load_context(
+                os.path.join(
+                    CONTEXT_FOLDER, json.loads(client.context)["context_filename"]
+                )
+            )
+            secret_key = ckks_context.secret_key()
+            print(secret_key, ckks_context)
 
-#             # 2. Fetch params file
-#             ftp_client = get_client(**ast.literal_eval(client.ftp_credentials))
-#             ftp_client.download(
-#                 os.path.join(PARAMS_FOLDER, client_data["params_file"]),
-#                 client_data["params_file"],
-#             )
-#             with open(
-#                 os.path.join(PARAMS_FOLDER, client_data["params_file"]), "rb"
-#             ) as f:
-#                 client_params = pickle.load(f)
+            # 2. Fetch params file
+            ftp_client = get_client(**ast.literal_eval(client.ftp_credentials))
+            ftp_client.download(
+                os.path.join(PARAMS_FOLDER, client_data["params_file"]),
+                client_data["params_file"],
+            )
+            with open(
+                os.path.join(PARAMS_FOLDER, client_data["params_file"]), "rb"
+            ) as f:
+                client_params = pickle.load(f)
 
-#             # 3. Deserialize encrypted bytearrays
-#             if client_params.get("encryption", False):
-#                 values = client_params.get("values", None)
+            # 3. Deserialize encrypted bytearrays
+            if client_params.get("encryption", False):
+                values = client_params.get("values", None)
 
-#                 deserialized_values = {}
-#                 for key, value in values.items():
-#                     deserialized_values[key] = (
-#                         ts.ckks_tensor_from(ckks_context, value)
-#                         .decrypt(secret_key)
-#                         .tolist()[0]
-#                     )
+                deserialized_values = {}
+                for key, value in values.items():
+                    deserialized_values[key] = (
+                        ts.ckks_tensor_from(ckks_context, value)
+                        .decrypt(secret_key)
+                        .tolist()[0]
+                    )
 
-#                 client_params["values"] = deserialized_values
+                client_params["values"] = deserialized_values
 
-#             # 4. Update objective client mapping if any
-#             ravdb.update_objective_client_mapping(
-#                 objective_client_mapping.id,
-#                 status=MappingStatus.COMPUTED,
-#                 result=str(client_params["values"][objective.operator]),
-#             )
+            # 4. Update objective client mapping if any
+            ravdb.update_objective_client_mapping(
+                objective_client_mapping.id,
+                status=MappingStatus.COMPUTED,
+                result=str(client_params["values"][objective.operator]),
+            )
 
-#             # 5. Aggregate and update objective
-#             if objective.result is None:
-#                 # Update objective if this is the first objective result
-#                 ravdb.update_objective(
-#                     objective_id=objective.id,
-#                     result=json.dumps(client_params["values"]),
-#                 )
-#             else:
-#                 # Aggregate values
-#                 cal_values = client_params["values"]
-#                 print("Calculated values:", cal_values)
-#                 result = json.loads(objective.result)
-#                 print("Previous result:", result)
-#                 current_mean = cal_values.get("mean", None)
-#                 previous_mean = result.get("mean", None)
-#                 n1 = result["size"]
-#                 n2 = cal_values["size"]
-#                 final_mean = None
-#                 global_variance = None
-#                 global_standard_deviation = None
-#                 global_min = min(
-#                     result["minimum"], cal_values.get("minimum", float("inf"))
-#                 )
-#                 global_max = max(
-#                     result["maximum"], cal_values.get("maximum", float("-inf"))
-#                 )
+            # 5. Aggregate and update objective
+            if objective.result is None:
+                # Update objective if this is the first objective result
+                ravdb.update_objective(
+                    objective_id=objective.id,
+                    result=json.dumps(client_params["values"]),
+                )
+            else:
+                # Aggregate values
+                cal_values = client_params["values"]
+                print("Calculated values:", cal_values)
+                result = json.loads(objective.result)
+                print("Previous result:", result)
+                current_mean = cal_values.get("mean", None)
+                previous_mean = result.get("mean", None)
+                n1 = result["size"]
+                n2 = cal_values["size"]
+                final_mean = None
+                global_variance = None
+                global_standard_deviation = None
+                global_min = min(
+                    result["minimum"], cal_values.get("minimum", float("inf"))
+                )
+                global_max = max(
+                    result["maximum"], cal_values.get("maximum", float("-inf"))
+                )
 
-#                 if objective.operator == "mean":
-#                     final_mean = (previous_mean * n1) / (n1 + n2) + (
-#                         current_mean * n2
-#                     ) / (n1 + n2)
-#                 elif objective.operator == "variance":
-#                     final_mean = (previous_mean * n1) / (n1 + n2) + (
-#                         current_mean * n2
-#                     ) / (n1 + n2)
-#                     global_variance = (
-#                         n1 * result.get("variance", None)
-#                         + n2 * cal_values.get("variance", None)
-#                     ) / (n1 + n2) + (
-#                         (n1 * n2 * (previous_mean - current_mean) ** 2) / (n1 + n2) ** 2
-#                     )
-#                 elif objective.operator == "standard_deviation":
-#                     final_mean = (previous_mean * n1) / (n1 + n2) + (
-#                         current_mean * n2
-#                     ) / (n1 + n2)
-#                     global_variance = (
-#                         n1 * result.get("variance", None)
-#                         + n2 * cal_values.get("variance", None)
-#                     ) / (n1 + n2) + (
-#                         (n1 * n2 * (previous_mean - current_mean) ** 2) / (n1 + n2) ** 2
-#                     )
-#                     global_standard_deviation = np.sqrt(global_variance)
+                if objective.operator == "mean":
+                    final_mean = (previous_mean * n1) / (n1 + n2) + (
+                        current_mean * n2
+                    ) / (n1 + n2)
+                elif objective.operator == "variance":
+                    final_mean = (previous_mean * n1) / (n1 + n2) + (
+                        current_mean * n2
+                    ) / (n1 + n2)
+                    global_variance = (
+                        n1 * result.get("variance", None)
+                        + n2 * cal_values.get("variance", None)
+                    ) / (n1 + n2) + (
+                        (n1 * n2 * (previous_mean - current_mean) ** 2) / (n1 + n2) ** 2
+                    )
+                elif objective.operator == "standard_deviation":
+                    final_mean = (previous_mean * n1) / (n1 + n2) + (
+                        current_mean * n2
+                    ) / (n1 + n2)
+                    global_variance = (
+                        n1 * result.get("variance", None)
+                        + n2 * cal_values.get("variance", None)
+                    ) / (n1 + n2) + (
+                        (n1 * n2 * (previous_mean - current_mean) ** 2) / (n1 + n2) ** 2
+                    )
+                    global_standard_deviation = np.sqrt(global_variance)
 
-#                 ravdb.update_objective(
-#                     objective_id=objective.id,
-#                     result=json.dumps(
-#                         {
-#                             "mean": final_mean,
-#                             "size": n1 + n2,
-#                             "variance": global_variance,
-#                             "minimum": global_min,
-#                             "maximum": global_max,
-#                             "standard_deviation": global_standard_deviation,
-#                         }
-#                     ),
-#                 )
+                ravdb.update_objective(
+                    objective_id=objective.id,
+                    result=json.dumps(
+                        {
+                            "mean": final_mean,
+                            "size": n1 + n2,
+                            "variance": global_variance,
+                            "minimum": global_min,
+                            "maximum": global_max,
+                            "standard_deviation": global_standard_deviation,
+                        }
+                    ),
+                )
 
-#             # 6. Update objective status based on rules and mappings count
-#             mappings = ravdb.get_objective_mappings(
-#                 objective_id, status=MappingStatus.COMPUTED
-#             )
-#             rules = json.loads(objective.rules)
-#             if mappings.count() >= rules["participants"]:
-#                 ravdb.update_objective(
-#                     objective_id=objective_id, status=MappingStatus.COMPUTED
-#                 )
-#         else:
-#             print("Duplicate results")
-
-
-# """
-# Federated Learning
-# """
+            # 6. Update objective status based on rules and mappings count
+            mappings = ravdb.get_objective_mappings(
+                objective_id, status=MappingStatus.COMPUTED
+            )
+            rules = json.loads(objective.rules)
+            if mappings.count() >= rules["participants"]:
+                ravdb.update_objective(
+                    objective_id=objective_id, status=MappingStatus.COMPUTED
+                )
+        else:
+            print("Duplicate results")
 
 
-# @sio.on("client_status", namespace="/raven-federated")
-# async def get_client_status(sid, client_status):
-#     print("client_status:{}".format(client_status))
-#     if client_status != {}:
-#         ravdb.update_federated_op(status=client_status["status"])
-#     op = find_op()
-#     logger.debug("Op:{}".format(op))
-#     if op is None:
-#         print("None")
-#         return None
-#     # Create payload
-#     payload = create_payload(op)
-#     # Updating client-op mapping
-#     client_op_mapping = ravdb.create_client_op_mapping(
-#         client_id=sid, op_id=op.id, status=MappingStatus.SENT
-#     )
-#     # Emit op
-#     logger.debug("Emitting op:{}, {}".format(sid, payload))
-#     return payload
+"""
+Federated Learning
+"""
 
 
-# """
-# Cleanup
-# """
+@sio.on("client_status", namespace="/raven-federated")
+async def get_client_status(sid, client_status):
+    print("client_status:{}".format(client_status))
+    if client_status != {}:
+        ravdb.update_federated_op(status=client_status["status"])
+    op = find_op()
+    logger.debug("Op:{}".format(op))
+    if op is None:
+        print("None")
+        return None
+    # Create payload
+    payload = create_payload(op)
+    # Updating client-op mapping
+    client_op_mapping = ravdb.create_client_op_mapping(
+        client_id=sid, op_id=op.id, status=MappingStatus.SENT
+    )
+    # Emit op
+    logger.debug("Emitting op:{}, {}".format(sid, payload))
+    return payload
 
 
-# async def cleanup():
-#     while True:
-#         try:
-#             await sio.sleep(10)
-#             clients = ravdb.get_clients()
-#             for client in clients:
-#                 if (datetime.datetime.utcnow() - client.last_active_time).seconds > 100:
-#                     client_sids = client.client_sids.all()
-#                     for client_sid in client_sids:
-#                         ravdb.delete(client_sid)
-#                     ravdb.delete(client)
-#                 else:
-#                     client_sids = client.client_sids
-#                     for client_sid in client_sids:
-#                         await sio.emit(
-#                             "check",
-#                             {"sid": client_sid.sid},
-#                             namespace=client_sid.namespace,
-#                             room=client_sid.sid,
-#                             callback=check_callback,
-#                         )
-#         except Exception as e:
-#             print("Error:{}".format(str(e)))
+"""
+Cleanup
+"""
 
 
-# @sio.event
-# async def check_callback(data):
-#     print("check_callback", data)
-#     client = ravdb.get_client_by_sid(sid=data["sid"])
-#     ravdb.update_client(client, last_active_time=datetime.datetime.utcnow())
+async def cleanup():
+    while True:
+        try:
+            await sio.sleep(10)
+            clients = ravdb.get_clients()
+            for client in clients:
+                if (datetime.datetime.utcnow() - client.last_active_time).seconds > 100:
+                    client_sids = client.client_sids.all()
+                    for client_sid in client_sids:
+                        ravdb.delete(client_sid)
+                    ravdb.delete(client)
+                else:
+                    client_sids = client.client_sids
+                    for client_sid in client_sids:
+                        await sio.emit(
+                            "check",
+                            {"sid": client_sid.sid},
+                            namespace=client_sid.namespace,
+                            room=client_sid.sid,
+                            callback=check_callback,
+                        )
+        except Exception as e:
+            print("Error:{}".format(str(e)))
+
+
+@sio.event
+async def check_callback(data):
+    print("check_callback", data)
+    client = ravdb.get_client_by_sid(sid=data["sid"])
+    ravdb.update_client(client, last_active_time=datetime.datetime.utcnow())
 
 # Socket web - server endpoints
 # We bind our aiohttp endpoint to our app router
