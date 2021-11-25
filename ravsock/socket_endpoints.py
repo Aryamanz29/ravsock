@@ -1,6 +1,8 @@
 import json
 import os
-
+from .db import RavQueue
+from .strings import OpStatus
+from .config import QUEUE_HIGH_PRIORITY, QUEUE_LOW_PRIORITY 
 from aiohttp import web
 from sqlalchemy.orm import class_mapper
 
@@ -13,8 +15,7 @@ from .utils import (
     load_data_from_file,
     convert_ndarray_to_str,
     find_dtype,
-    get_op_stats,
-)
+    get_op_stats)
 
 
 # from ravop.core import t
@@ -63,12 +64,22 @@ async def op_create(request):
                 status=400,
             )
 
+        data['name'] = 'ravjs'
         op = ravdb.create_op(**data)
         op_dict = serialize(op)
 
         # Remove datetime key
         del op_dict["created_at"]
-        print(type(op_dict), op_dict)
+        # print(type(op_dict), op_dict)
+
+        # Add op to queue
+        if op.status != OpStatus.COMPUTED and op.status != OpStatus.FAILED:
+            # if g.graph_id is None:
+            q = RavQueue(name=QUEUE_HIGH_PRIORITY)
+            q.push(op.id)
+            # else:
+            #     q = RavQueue(name=QUEUE_LOW_PRIORITY)
+            #     q.push(op.id)
 
         return web.json_response(op_dict, content_type="application/json", status=200)
 
@@ -94,7 +105,7 @@ async def op_get(request):
 
         # Remove datetime key
         del op_dict["created_at"]
-        print(type(op_dict), op_dict)
+        # print(type(op_dict), op_dict)
 
         return web.json_response(op_dict, content_type="application/json", status=200)
 
@@ -124,7 +135,7 @@ async def op_get_by_name(request):
             del op_dict["created_at"]
             ops_dicts.append(op_dict)
 
-        print(type(ops_dicts), ops_dicts)
+        # print(type(ops_dicts), ops_dicts)
 
         return web.json_response(ops_dicts, content_type="application/json", status=200)
 
@@ -147,7 +158,7 @@ async def op_get_all(request):
     try:
 
         ops = ravdb.get_all_ops()
-        print(type(ops), ops)
+        # print(type(ops), ops)
         ops_dicts = []
         for op in ops:
             op_dict = serialize(op)
@@ -174,7 +185,6 @@ async def op_status(request):
     """
 
     op_id = request.rel_url.query["id"]
-    print(op_id)
 
     op = ravdb.get_op(op_id)
 
@@ -186,7 +196,6 @@ async def op_status(request):
         return web.json_response(
             {"op_status": op.status}, content_type="application/json", status=200
         )
-
 
 async def op_delete(request):
     # http://localhost:9999/op/delete/?id=1
@@ -233,18 +242,33 @@ async def data_create(request):
     """
     try:
         data = await request.json()
-        print("Request data:", data, type(data))
+        # print("Request data:", data, type(data))
         value = convert_to_ndarray(data["value"])
-        print(value)
-        dtype = value.dtype
-        print(dtype, type(dtype))
-        data = ravdb.create_data(dtype=str(dtype))
-        print(data)
-        print("TYPE ===", type(data), "DATA == ", data)
-        file_path = dump_data(data.id, value)
+        dtype = str(value.dtype)
+        # print(type(dtype), dtype)
+        data = ravdb.create_data(dtype=dtype)
+        # print("TYPE ===", type(data), "DATA == ", data)
 
+        # if dtype == "ndarray":
+        #     file_path = dump_data(data.id, value)
+        #     # Update file path
+        #     ravdb.update_data(data, file_path=file_path)
+        # elif dtype in ["int", "float"]:
+
+        file_path = dump_data(data.id, value)
         # Update file path
         ravdb.update_data(data, file_path=file_path)
+
+        # ravdb.update_data(data, value=value)
+
+        # elif dtype == "file":
+        #     filepath = os.path.join(
+        #         os.path.join(BASE_DIR, "files"), "data_{}_{}".format(data.id, value)
+        #     )
+        #     copy_data(source=value, destination=filepath)
+        #     ravdb.update_data(data, file_path=filepath)
+
+        # Serialize db object
         data_dict = serialize(data)
 
         if data.file_path is not None:
@@ -254,7 +278,7 @@ async def data_create(request):
         del data_dict["created_at"]
         del data_dict["file_path"]
 
-        print("TYPE == ", type(data), data_dict)
+        # print("TYPE == ", type(data), data_dict)
 
         return web.json_response(data_dict, content_type="application/json", status=200)
 
@@ -275,14 +299,12 @@ async def data_get(request):
 
     # try:
     data_id = request.rel_url.query["id"]
-    print(data_id)
+    # print(data_id)
 
     if data_id is None:
         return web.json_response(
-            {"message": "Data id parameter is required"},
-            content_type="text/html",
-            status=400,
-        )
+                   {"message": "Data id parameter is required"}, content_type="text/html", status=400
+               )
 
     data = ravdb.get_data(data_id=data_id)
 
@@ -290,18 +312,23 @@ async def data_get(request):
         return web.json_response(
             {"message": "Invalid Data id"}, content_type="text/html", status=400
         )
-
     data_dict = serialize(data)
-    print(type(data_dict), data_dict)
+    if data.file_path is not None:
+        data_dict["value"] = load_data_from_file(data.file_path).tolist()
+    # print(type(data_dict), data_dict)
 
     if data.file_path is not None:
+        # if data.dtype == "ndarray":
+        #     data_dict["value"] = load_data_from_file(data.file_path).tolist()
+        # else:
+
         data_dict["value"] = load_data_from_file(data.file_path).tolist()
 
     # Remove datetime key
     del data_dict["created_at"]
     del data_dict["file_path"]
 
-    print(data_dict)
+    # print(data_dict)
 
     return web.json_response(data_dict, content_type="application/json", status=200)
 
@@ -323,7 +350,7 @@ async def data_get_data(request):
 
     try:
         data_id = request.rel_url.query["id"]
-        print(data_id)
+        # print(data_id)
 
         data = ravdb.get_data(data_id=data_id)
 
@@ -347,7 +374,7 @@ async def data_delete(request):
 
     try:
         data_id = request.rel_url.query["id"]
-        print(data_id)
+        # print(data_id)
 
         ravdb.delete_data(data_id=data_id)
 
@@ -373,7 +400,7 @@ async def graph_create(request):
     # http://localhost:9999/graph/create/
     try:
         data = await request.json()
-        print(data)
+        # print(data)
 
         # Create a new graph
         graph_obj = ravdb.create_graph()
@@ -384,7 +411,7 @@ async def graph_create(request):
         # Remove datetime key
         del graph_dict["created_at"]
 
-        print("GRAPH TYPE == ", type(graph_dict), "GRAPH == ", graph_dict)
+        # print("GRAPH TYPE == ", type(graph_dict), "GRAPH == ", graph_dict)
 
         return web.json_response(
             graph_dict,
@@ -557,7 +584,6 @@ async def graph_op_name_get(request):
             content_type="text/html",
             status=400,
         )
-
 
 async def graph_op_get_stats(request):
     # http://localhost:9999/graph/op/get/stats/?id=4

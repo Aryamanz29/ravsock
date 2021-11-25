@@ -9,7 +9,7 @@ from sqlalchemy_utils import (
     create_database as cd,
     drop_database as dba,
 )
-
+from ..utils import load_data_from_file
 from .models import (
     Op,
     Graph,
@@ -249,7 +249,9 @@ class DBManager(object):
                     print("Deleting Data object...")
                     # Delete data object
                     self.delete_data(data_id)
+
             print("Deleting op...")
+            # Delete op object
             self.delete(op)
 
     def create_client(self, **kwargs):
@@ -671,3 +673,13 @@ class DBManager(object):
             return None
         else:
             return self.get_client_by_cid(cid=client_sid_mapping.cid)
+
+    def get_op_output(self,op_id):
+        op = self.get_op(op_id)
+        if op.outputs is None or op.outputs == "null":
+            return None
+
+        data_id = json.loads(op.outputs)[0]
+        data = self.get_data(data_id=data_id)
+        data = load_data_from_file(data.file_path)
+        return data

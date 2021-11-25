@@ -1,13 +1,10 @@
 aiohttp==3.8.1
-tenseal==0.3.6
 paramiko==2.8.0
 numpy==1.20.3
-aiohttp==3.7.4.post0
-SQLAlchemy==1.4.26
+SQLAlchemy
 python-engineio==4.2.1
 python-socketio==5.4.1
 redis==3.5.3
-SQLAlchemy_Utils==0.37.2
+SQLAlchemy_Utils
 black==21.8b0
 flake8==3.9.2
-mysqlclient==2.0.3
