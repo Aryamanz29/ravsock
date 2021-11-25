@@ -919,5 +919,7 @@ app.router.add_get("/graph/op/get/", graph_op_get)
 app.router.add_get("/graph/op/name/get/", graph_op_name_get)
 app.router.add_get("/graph/op/get/stats/", graph_op_get_stats)
 app.router.add_get("/graph/op/get/progress/", graph_get_progress)
+app.router.add_get("/graph/op/delete/", graph_op_delete)
 app.router.add_get("/graph/delete/", graph_delete)
+
 # app.router.add_get("/graph/op/delete/", graph_op_delete)

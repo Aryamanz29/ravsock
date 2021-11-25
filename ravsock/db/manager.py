@@ -234,25 +234,30 @@ class DBManager(object):
     def delete_graph_ops(self, graph_id):
         print("Deleting graph ops...")
         ops = self.get_graph_ops(graph_id=graph_id)
+        print(ops)
+        if len(ops) != 0:
+            for op in ops:
+                print("Op id:{}".format(op.id))
+                data_ids = json.loads(op.outputs)
+                self.delete(op)
+                if data_ids is not None:
+                    for data_id in data_ids:
+                        print("Data id:{}".format(data_id))
 
-        for op in ops:
-            print("Op id:{}".format(op.id))
-            data_ids = json.loads(op.outputs)
-            if data_ids is not None:
-                for data_id in data_ids:
-                    print("Data id:{}".format(data_id))
+                        print("Deleting Data file...")
+                        # Delete data file
+                        delete_data_file(data_id)
 
-                    print("Deleting Data file...")
-                    # Delete data file
-                    delete_data_file(data_id)
-
-                    print("Deleting Data object...")
-                    # Delete data object
-                    self.delete_data(data_id)
-
-            print("Deleting op...")
-            # Delete op object
-            self.delete(op)
+                        print("Deleting Data object...")
+                        # Delete data object
+                        self.delete_data(data_id)
+                print("Deleting op...")
+                
+            return True
+        
+        else:
+            print("No ops accociate with this graph!")
+            return False
 
     def create_client(self, **kwargs):
         obj = Client()
