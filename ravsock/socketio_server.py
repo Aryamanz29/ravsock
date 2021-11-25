@@ -8,6 +8,7 @@ import pickle
 import threading
 import numpy as np
 import socketio
+
 import tenseal as ts
 from aiohttp import web
 from sqlalchemy import or_
@@ -15,16 +16,13 @@ from .config import WAIT_INTERVAL_TIME, PARAMS_FOLDER, CONTEXT_FOLDER, RAVSOCK_L
 from .db import (
     ClientOpMapping,
     RavQueue,
-    QUEUE_COMPUTING,
-    QUEUE_LOW_PRIORITY,
-    QUEUE_HIGH_PRIORITY,
-    Op as RavOp,
-    Data as RavData,
-    ObjectiveClientMapping,
+    ObjectiveClientMapping
 )
+
+from .config import QUEUE_COMPUTING, QUEUE_LOW_PRIORITY,QUEUE_HIGH_PRIORITY
 from .encryption import get_context, load_context, dump_context
 from .ftp import get_client, check_credentials, add_user
-from .strings import OpStatus, MappingStatus, GraphStatus
+from .strings import OpStatus, MappingStatus, GraphStatus, functions
 from .db import ravdb
 from .socket_endpoints import *
 
@@ -105,7 +103,7 @@ async def connect(sid, environ):
     from urllib import parse
 
     ps = parse.parse_qs(environ["QUERY_STRING"])
-    namespace = "/"
+    namespace = "/ravjs"
     cid = ps["cid"][0]
     if cid is None:
         return None
@@ -116,7 +114,7 @@ async def create_client(cid, sid, namespace):
     print("Connected:{} {} {}".format(cid, sid, namespace))
 
     client_type = namespace[1:]
-
+    # print('client_type ', client_type)
     # Create client
     client = ravdb.get_client_by_cid(cid)
     if client is None:
@@ -332,15 +330,17 @@ async def op_completed(sid, data):
             op_id, type(data["result"]), data["operator"], data["result"]
         )
     )
-
-    op = RavOp(id=op_id)
+    
+    op = ravdb.get_op(op_id)
 
     if data["status"] == "success":
-        data = RavData(value=np.array(data["result"]), dtype="ndarray")
-
+        data_obj = ravdb.create_data(dtype="ndarray")
+        file_path = dump_data(data_obj.id, value=np.array(data["result"]))
+        ravdb.update_data(data_obj, file_path=file_path)
+        
         # Update op
         ravdb.update_op(
-            op._op_db, outputs=json.dumps([data.id]), status=OpStatus.COMPUTED
+            op, outputs=json.dumps([data_obj.id]), status=OpStatus.COMPUTED
         )
 
         # Update client op mapping
@@ -357,7 +357,7 @@ async def op_completed(sid, data):
     else:
         # Update op
         ravdb.update_op(
-            op._op_db, outputs=None, status=OpStatus.FAILED, message=data["result"]
+            op, outputs=None, status=OpStatus.FAILED, message=data["result"]
         )
 
         # Update client op mapping
@@ -399,7 +399,7 @@ async def emit_op(sid, op=None):
     # Find an op
     if op is None:
         op = find_op(name=ravdb.get_client_by_sid(sid).type)
-
+        
     logger.debug(op)
 
     if op is None:
@@ -408,15 +408,17 @@ async def emit_op(sid, op=None):
 
     # Create payload
     payload = create_payload(op)
-
     # Emit op
     logger.debug("Emitting op:{}, {}".format(sid, payload))
     await sio.emit("op", payload, namespace="/ravjs", room=sid)
 
     # Store the mapping in database
     client = ravdb.get_client_by_sid(sid)
-    ravop = RavOp(id=op.id)
-    ravdb.update_op(ravop._op_db, status=OpStatus.COMPUTING)
+    
+    ravop = ravdb.get_op(op.id)
+
+    ravdb.update_op(ravop, status=OpStatus.COMPUTING)
+    
     mapping = ravdb.create_client_op_mapping(
         client_id=client.id,
         op_id=op.id,
@@ -456,7 +458,6 @@ def find_op(name=None):
         pass
     elif name == "ravjs":
         op = ravdb.get_incomplete_op()
-
         if op is not None:
             return op
         else:
@@ -552,29 +553,35 @@ def create_payload(op):
     values = []
     inputs = json.loads(op.inputs)
     for op_id in inputs:
-        ravop = RavOp(id=op_id)
-        if ravop.output_dtype == "ndarray":
-            values.append(ravop.output.tolist())
-        else:
-            values.append(ravop.output)
-
+        # ravop = ravdb.get_op(op_id=op_id) #RavOp(id=op_id)
+        # if ravop.get_dtype() == "ndarray":
+        #     print('GET_DTYPE')
+        #     values.append(ravop.output.tolist())
+        # else:
+        #     print('NOT_GET_DTYPE')
+        #     values.append(ravop.output)
+        output = ravdb.get_op_output(op_id)
+        values.append(output.tolist())
+        
     payload = dict()
     payload["op_id"] = op.id
     payload["values"] = values
     payload["op_type"] = op.op_type
-    payload["operator"] = op.operator
+    payload["operator"] = functions[op.operator]
 
     params = dict()
     for key, value in json.loads(op.params).items():
         if type(value).__name__ == "int":
-            op1 = RavOp(id=value)
-            if op1.output_dtype == "ndarray":
-                params[key] = op1.output.tolist()
-            else:
-                params[key] = op1.output
+            # op1 = RavOp(id=value)
+            # if op1.output_dtype == "ndarray":
+            #     params[key] = op1.output.tolist()
+            # else:
+            #     params[key] = op1.output
+            op1 = ravdb.get_op_output(value)
+            params[key] = op1.tolist()
         elif type(value).__name__ == "str":
             params[key] = value
-
+    
     payload["params"] = params
 
     return payload
@@ -885,7 +892,6 @@ async def check_callback(data):
     client = ravdb.get_client_by_sid(sid=data["sid"])
     ravdb.update_client(client, last_active_time=datetime.datetime.utcnow())
 
-
 # Socket web - server endpoints
 # We bind our aiohttp endpoint to our app router
 
@@ -915,3 +921,5 @@ app.router.add_get("/graph/op/get/stats/", graph_op_get_stats)
 app.router.add_get("/graph/op/get/progress/", graph_get_progress)
 app.router.add_get("/graph/op/delete/", graph_op_delete)
 app.router.add_get("/graph/delete/", graph_delete)
+
+# app.router.add_get("/graph/op/delete/", graph_op_delete)
