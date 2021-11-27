@@ -1,0 +1,54 @@
+{% extends 'base.html' %}
+
+{% block content %}
+
+<div class="container">
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header">
+                    Op Details
+                </div>
+                <div class="card-body">
+                    <h5 class="card-title">Op ID : {{ op_dict.id }}</h5>
+                    <div class="card-text">
+                        <div>Name : {{ op_dict.name }}</div>
+                        <br/>
+                        <div>Graph :
+                            <a href="/graph/{{ op_dict.graph_id }}/">Graph({{ op_dict.graph_id }})</a>
+                        </div>
+                        <br/>
+                        <div>Inputs :
+                            {% for op_obj in op_dict.inputs %}
+                                <a href="/graph/ops/{{ op_obj.graph_id }}/{{ op_obj.id }}/">Op({{ op_obj.id }})</a>
+                            {% endfor %}
+                        </div>
+                        <br/>
+                        <div>Outputs :
+                            {% for data_obj in op_dict.outputs %}
+                                <a href="/data/{{ data_obj.id }}/">Data({{ data_obj.id }})</a>
+                            {% endfor %}
+                        </div>
+                        <br/>
+                        <div>Node Type : {{ op_dict.node_type|title }}</div>
+                        <br/>
+                        <div>Op Type : {{ op_dict.op_type|title }}</div>
+                        <br/>
+                        <div>Operator : {{ op_dict.operator|title }}</div>
+                        <br/>
+                        <div>Status : {{ op_dict.status|title }}</div>
+                        <br/>
+                        <div>Params : {{ op_dict.params|title }}</div>
+                        <br/>
+                        <div>Message : {{ op_dict.message }}</div>
+                        <br/>
+                        <div>Created At : {{ op_dict.created_at.strftime('%d-%m-%Y %H:%M:%S') }}</div>
+                        <br/>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+    
+{% endblock content %}

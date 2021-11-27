@@ -1,0 +1,62 @@
+{% extends 'base.html' %}
+
+{% block content %}
+
+<div class="container">
+    <hr/>
+    <h3 class="text-center">Graph Ops</h3>
+    <h6 class="text-right">Total:{{ ops_dicts|length }}</h6>
+    <div class="row">
+        <table class="table table-bordered">
+            <thead>
+            <tr>
+                <th scope="col">ID</th>
+                 <th scope="col">Graph Id</th>
+                <th scope="col">Name</th>
+                <th scope="col">Status</th>
+                <th scope="col">Operator</th>
+                <th scope="col">Op Type</th>
+                <th scope="col">Node Type</th>
+                <th scope="col">Inputs</th>
+                <th scope="col">Outputs</th>
+                <th scope="col">Params</th>
+                <th scope="col">Message</th>
+                <th scope="col">Created At</th>
+                <th scope="col">Options</th>
+
+            </tr>
+            </thead>
+            <tbody>
+            {% for op in ops_dicts %}
+                <tr>
+                    <th scope="row"><a href="/graph/ops/{{ op.graph_id }}/{{ op.id }}/">Op({{ op.id }})</a></th>
+                    <td><a href="/graph/{{ op.graph_id }}/">Graph({{ op.graph_id }})</a> <a href="/graph/ops/{{ op.graph_id }}/">Ops</a></td>
+                    <td>{{ op.name|title }}</td>
+                    <td>{{ op.status|title }}</td>
+
+                    <td>{{ op.operator|title }}</td>
+                    <td>{{ op.op_type|title }}</td>
+                    <td>{{ op.node_type|title }}</td>
+                    <td>
+                        {% for op_obj in op.inputs %}
+                            <a href="/graph/ops/{{ op_obj.graph_id }}/{{ op_obj.id }}/">Op({{ op_obj.id }})</a>
+                        {% endfor %}
+                    </td>
+                    <td>
+                        {% for data_obj in op.outputs %}
+                            <a href="/data/{{ data_obj.id }}/">Data({{ data_obj.id }})</a>
+                        {% endfor %}
+                    </td>
+                    <td>{{ op.params }}</td>
+                    <td>{{ op.message }}</td>
+                    <td>{{ op.created_at }}</td>
+                    <td><a href="/graph/ops/{{ op.graph_id }}/{{ op.id }}/">View</a></td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+
+    </div>
+</div>
+    
+{% endblock content %}

@@ -2,7 +2,7 @@ import json
 import os
 from .db import RavQueue
 from .strings import OpStatus
-from .config import QUEUE_HIGH_PRIORITY, QUEUE_LOW_PRIORITY 
+from .config import QUEUE_HIGH_PRIORITY, QUEUE_LOW_PRIORITY
 from aiohttp import web
 from sqlalchemy.orm import class_mapper
 
@@ -15,7 +15,8 @@ from .utils import (
     load_data_from_file,
     convert_ndarray_to_str,
     find_dtype,
-    get_op_stats)
+    get_op_stats,
+)
 
 
 # from ravop.core import t
@@ -64,7 +65,7 @@ async def op_create(request):
                 status=400,
             )
 
-        data['name'] = 'ravjs'
+        data["name"] = "ravjs"
         op = ravdb.create_op(**data)
         op_dict = serialize(op)
 
@@ -197,6 +198,7 @@ async def op_status(request):
             {"op_status": op.status}, content_type="application/json", status=200
         )
 
+
 async def op_delete(request):
     # http://localhost:9999/op/delete/?id=1
     """
@@ -303,8 +305,10 @@ async def data_get(request):
 
     if data_id is None:
         return web.json_response(
-                   {"message": "Data id parameter is required"}, content_type="text/html", status=400
-               )
+            {"message": "Data id parameter is required"},
+            content_type="text/html",
+            status=400,
+        )
 
     data = ravdb.get_data(data_id=data_id)
 
@@ -585,6 +589,7 @@ async def graph_op_name_get(request):
             status=400,
         )
 
+
 async def graph_op_get_stats(request):
     # http://localhost:9999/graph/op/get/stats/?id=4
     """
@@ -657,22 +662,23 @@ async def graph_get_progress(request):
             {"message": "Invalid Graph id"}, content_type="text/html", status=400
         )
 
+
 async def graph_op_delete(request):
     # http://localhost:9999/graph/op/delete/?id=1
     """
     It deletes Ops & data objects associated with the given graph
     params  = id(graph_id) : int
     """
-    try :
+    try:
         graph_id = request.rel_url.query["id"]
         graph_obj = ravdb.get_graph(graph_id=graph_id)
-        
-        if graph_obj is None :
+
+        if graph_obj is None:
             return web.json_response(
-            {"message": "Invalid Graph id"}, content_type="text/html", status=400
+                {"message": "Invalid Graph id"}, content_type="text/html", status=400
             )
 
-        else :
+        else:
             if ravdb.delete_graph_ops(graph_id):
                 data = {
                     "graph_id": graph_id,
@@ -689,15 +695,21 @@ async def graph_op_delete(request):
                     content_type="application/json",
                     dumps=json.dumps,
                 )
-            else :
-                   return web.json_response({"message": "No ops accociate with this graph!"}, content_type="text/html", status=400)
+            else:
+                return web.json_response(
+                    {"message": "No ops accociate with this graph!"},
+                    content_type="text/html",
+                    status=400,
+                )
 
     except Exception as e:
 
         print("\nGRAPH OP DELETE ENDPOINT ERROR : ", str(e))
 
         return web.json_response(
-            {"message": "Graph Ops already been deleted"}, content_type="text/html", status=400
+            {"message": "Graph Ops already been deleted"},
+            content_type="text/html",
+            status=400,
         )
 
 

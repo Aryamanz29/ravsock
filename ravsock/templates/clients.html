@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+
+{% block content %}
+
+<div class="container">
+    <hr/>
+    <h3 class="text-center">Clients</h3>
+    <h6 class="text-right">Total:{{ clients_dicts|length }}</h6>
+    <div class="row">
+        <table class="table table-bordered">
+            <thead>
+            <tr>
+                <th scope="col">ID</th>
+                <th scope="col">Client ID</th>
+                <th scope="col">Client IP</th>
+                <th scope="col">Status</th>
+                <th scope="col">Client Type</th>
+                <th scope="col">Connected At</th>
+                <th scope="col">Disconnected At</th>
+                <th scope="col">Created At</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for client in clients_dicts %}
+                <tr>
+                    <th scope="row">{{ client.id }}</th>
+                    <td>{{ client.client_id }}</td>
+                    <td>{{ client.client_ip }}</td>
+                    <td>{{ client.status }}</td>
+                    <td>{{ client.type }}</td>
+                    <td>{{ client.connected_at.strftime('%d-%m-%Y %H:%M:%S') }}</td>
+                    <td>{{ client.disconnected_at.strftime('%d-%m-%Y %H:%M:%S') }}</td>
+                    <td>{{ client.created_at.strftime('%d-%m-%Y %H:%M:%S') }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+
+    </div>
+</div>
+    
+{% endblock content %}

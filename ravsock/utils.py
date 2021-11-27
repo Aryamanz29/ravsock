@@ -7,6 +7,7 @@ import numpy as np
 from sqlalchemy_utils import database_exists
 
 from .config import DATA_FILES_PATH, RDF_DATABASE_URI
+from sqlalchemy.orm import class_mapper
 
 
 def save_data_to_file(data_id, data):
@@ -86,6 +87,7 @@ def copy_data(source, destination):
 
 def reset_database():
     from .db import ravdb
+
     ravdb.drop_database()
     ravdb.create_database()
     ravdb.create_tables()
@@ -93,6 +95,7 @@ def reset_database():
 
 def create_database():
     from .db import ravdb
+
     while not database_exists(RDF_DATABASE_URI):
         ravdb.create_database()
         return True
@@ -102,6 +105,7 @@ def create_database():
 
 def create_tables():
     from .db import ravdb
+
     if database_exists(RDF_DATABASE_URI):
         ravdb.create_tables()
         print("Tables created")
@@ -128,7 +132,12 @@ def convert_to_ndarray(x):
     if isinstance(x, str):
         x = np.array(json.loads(x))
         # print(type(x).__name__, '\n\n\n\n')
-    elif isinstance(x, list) or isinstance(x, tuple) or isinstance(x, int) or isinstance(x, float):
+    elif (
+        isinstance(x, list)
+        or isinstance(x, tuple)
+        or isinstance(x, int)
+        or isinstance(x, float)
+    ):
         x = np.array(x)
         # print('DTYPE    SECOND',type(x), '\n\n\n\n')
 
@@ -137,7 +146,6 @@ def convert_to_ndarray(x):
 
 def parse_string(x):
     x = json.loads(x)
-
 
 
 def convert_ndarray_to_str(x):
@@ -165,6 +173,7 @@ def get_rank_dtype(data):
     else:
         return rank, np.array(data).dtype.name
 
+
 def get_op_stats(ops):
 
     pending_ops = 0
@@ -191,3 +200,13 @@ def get_op_stats(ops):
         "computed_ops": computed_ops,
         "failed_ops": failed_ops,
     }
+
+
+def serialize(model):
+    """
+    db_object => python_dict
+    """
+    # first we get the names of all the columns on your model
+    columns = [c.key for c in class_mapper(model.__class__).columns]
+    # then we return their values in a dict
+    return dict((c, getattr(model, c)) for c in columns)

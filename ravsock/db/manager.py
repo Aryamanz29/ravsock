@@ -252,9 +252,9 @@ class DBManager(object):
                         # Delete data object
                         self.delete_data(data_id)
                 print("Deleting op...")
-                
+
             return True
-        
+
         else:
             print("No ops accociate with this graph!")
             return False
@@ -679,7 +679,7 @@ class DBManager(object):
         else:
             return self.get_client_by_cid(cid=client_sid_mapping.cid)
 
-    def get_op_output(self,op_id):
+    def get_op_output(self, op_id):
         op = self.get_op(op_id)
         if op.outputs is None or op.outputs == "null":
             return None

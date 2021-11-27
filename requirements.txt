@@ -8,3 +8,5 @@ redis==3.5.3
 SQLAlchemy_Utils
 black==21.8b0
 flake8==3.9.2
+aiohttp-jinja2==1.5
+Jinja2==3.0.3

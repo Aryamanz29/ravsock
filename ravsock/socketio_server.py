@@ -8,23 +8,22 @@ import pickle
 import threading
 import numpy as np
 import socketio
-
+import pathlib
 import tenseal as ts
 from aiohttp import web
 from sqlalchemy import or_
 from .config import WAIT_INTERVAL_TIME, PARAMS_FOLDER, CONTEXT_FOLDER, RAVSOCK_LOG_FILE
-from .db import (
-    ClientOpMapping,
-    RavQueue,
-    ObjectiveClientMapping
-)
+from .db import ClientOpMapping, RavQueue, ObjectiveClientMapping
 
-from .config import QUEUE_COMPUTING, QUEUE_LOW_PRIORITY,QUEUE_HIGH_PRIORITY
+from .config import QUEUE_COMPUTING, QUEUE_LOW_PRIORITY, QUEUE_HIGH_PRIORITY
 from .encryption import get_context, load_context, dump_context
 from .ftp import get_client, check_credentials, add_user
 from .strings import OpStatus, MappingStatus, GraphStatus, functions
 from .db import ravdb
 from .socket_endpoints import *
+from .socket_visualize import *
+import jinja2
+import aiohttp_jinja2
 
 # Set up a specific logger with our desired output level
 logger = logging.getLogger(__name__)
@@ -46,6 +45,15 @@ app = web.Application()
 
 # Binds our Socket.IO server to our Web App instance
 sio.attach(app)
+
+# --- Socket Visualize Setup ---
+
+templates_dir = str(pathlib.Path(__file__).parent.resolve()) + "/templates/"
+static_dir = str(pathlib.Path(__file__).parent.resolve()) + "/static/"
+print(static_dir)
+app["static_root_url"] = "/static"
+aiohttp_jinja2.setup(app, loader=jinja2.FileSystemLoader(templates_dir))
+app.router.add_static("/static/", static_dir, name="static")
 
 # Instantiate queues
 queue_high_priority = RavQueue(name=QUEUE_HIGH_PRIORITY)
@@ -330,18 +338,16 @@ async def op_completed(sid, data):
             op_id, type(data["result"]), data["operator"], data["result"]
         )
     )
-    
+
     op = ravdb.get_op(op_id)
 
     if data["status"] == "success":
         data_obj = ravdb.create_data(dtype="ndarray")
         file_path = dump_data(data_obj.id, value=np.array(data["result"]))
         ravdb.update_data(data_obj, file_path=file_path)
-        
+
         # Update op
-        ravdb.update_op(
-            op, outputs=json.dumps([data_obj.id]), status=OpStatus.COMPUTED
-        )
+        ravdb.update_op(op, outputs=json.dumps([data_obj.id]), status=OpStatus.COMPUTED)
 
         # Update client op mapping
         update_client_op_mapping(op_id, sid=sid, status=MappingStatus.COMPUTED)
@@ -399,7 +405,7 @@ async def emit_op(sid, op=None):
     # Find an op
     if op is None:
         op = find_op(name=ravdb.get_client_by_sid(sid).type)
-        
+
     logger.debug(op)
 
     if op is None:
@@ -414,11 +420,11 @@ async def emit_op(sid, op=None):
 
     # Store the mapping in database
     client = ravdb.get_client_by_sid(sid)
-    
+
     ravop = ravdb.get_op(op.id)
 
     ravdb.update_op(ravop, status=OpStatus.COMPUTING)
-    
+
     mapping = ravdb.create_client_op_mapping(
         client_id=client.id,
         op_id=op.id,
@@ -562,7 +568,7 @@ def create_payload(op):
         #     values.append(ravop.output)
         output = ravdb.get_op_output(op_id)
         values.append(output.tolist())
-        
+
     payload = dict()
     payload["op_id"] = op.id
     payload["values"] = values
@@ -581,7 +587,7 @@ def create_payload(op):
             params[key] = op1.tolist()
         elif type(value).__name__ == "str":
             params[key] = value
-    
+
     payload["params"] = params
 
     return payload
@@ -892,10 +898,11 @@ async def check_callback(data):
     client = ravdb.get_client_by_sid(sid=data["sid"])
     ravdb.update_client(client, last_active_time=datetime.datetime.utcnow())
 
-# Socket web - server endpoints
-# We bind our aiohttp endpoint to our app router
 
+# Home
 app.router.add_get("/", index)
+
+# --- SOCKET API ----
 
 # OPS web endpoints
 app.router.add_post("/op/create/", op_create)
@@ -922,4 +929,15 @@ app.router.add_get("/graph/op/get/progress/", graph_get_progress)
 app.router.add_get("/graph/op/delete/", graph_op_delete)
 app.router.add_get("/graph/delete/", graph_delete)
 
-# app.router.add_get("/graph/op/delete/", graph_op_delete)
+
+# --- SOCKET VISUALIZE ----
+app.router.add_get("/viz/", viz)
+app.router.add_get("/viz/data/{data_id}/", viz_data)
+app.router.add_get("/viz/clients/", viz_clients)
+
+app.router.add_get("/viz/ops/", viz_ops)
+app.router.add_get("/viz/ops/{op_id}/", viz_op_view)
+
+app.router.add_get("/viz/graphs/", viz_graphs)
+app.router.add_get("/viz/graph/ops/{graph_id}/", viz_graph_ops)
+app.router.add_get("/viz/graph/{graph_id}/", viz_graph_view)

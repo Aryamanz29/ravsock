@@ -15,6 +15,6 @@ setup(
         "redis==3.5.3",
         "SQLAlchemy_Utils==0.37.2",
         "black==21.8b0",
-        "flake8==3.9.2"
-    ]
+        "flake8==3.9.2",
+    ],
 )
