@@ -1,6 +1,7 @@
+import jinja2
+import ast
 from aiohttp import web
 from .db import ravdb
-import jinja2
 import aiohttp_jinja2
 from .utils import (
     dump_data,
@@ -63,8 +64,16 @@ async def viz_ops(request):
     ops_dicts = []
     for op in ops:
         op_dict = serialize(op)
-        # Remove datetime key
-        del op_dict["created_at"]
+        if op_dict["inputs"] != "null" and op_dict["inputs"] is not None:
+            op_dict["inputs"] = ast.literal_eval(op_dict["inputs"])
+        else:
+            op_dict["inputs"] = None
+
+        if op_dict["outputs"] != "null" and op_dict["outputs"] is not None:
+            op_dict["outputs"] = ast.literal_eval(op_dict["outputs"])
+        else:
+            op_dict["outputs"] = None
+
         ops_dicts.append(op_dict)
 
     return {"ops_dicts": ops_dicts, "title": "Ops"}
@@ -74,8 +83,17 @@ async def viz_ops(request):
 async def viz_op_view(request):
     op_id = request.match_info["op_id"]
     op = ravdb.get_op(op_id)
+    op_dict = serialize(op)
     if op is not None:
-        op_dict = serialize(op)
+        if op_dict["inputs"] != "null" and op_dict["inputs"] is not None:
+            op_dict["inputs"] = ast.literal_eval(op_dict["inputs"])
+        else:
+            op_dict["inputs"] = None
+
+        if op_dict["outputs"] != "null" and op_dict["outputs"] is not None:
+            op_dict["outputs"] = ast.literal_eval(op_dict["outputs"])
+        else:
+            op_dict["outputs"] = None
         return {"op_dict": op_dict, "title": "Ops"}
     else:
         return {"op_dict": None, "title": "Ops"}
@@ -93,7 +111,6 @@ async def viz_graphs(request):
     for graph in graph_objs:
         graph_dict = serialize(graph)
         graph_dicts.append(graph_dict)
-    print(graph_dicts)
 
     return {"graph_dicts": graph_dicts, "title": "Graph"}
 
@@ -107,8 +124,15 @@ async def viz_graph_ops(request):
 
     for op in ops:
         op_dict = serialize(op)
-        # Remove datetime key
-        del op_dict["created_at"]
+        if op_dict["inputs"] != "null" and op_dict["inputs"] is not None:
+            op_dict["inputs"] = ast.literal_eval(op_dict["inputs"])
+        else:
+            op_dict["inputs"] = None
+
+        if op_dict["outputs"] != "null" and op_dict["outputs"] is not None:
+            op_dict["outputs"] = ast.literal_eval(op_dict["outputs"])
+        else:
+            op_dict["outputs"] = None
         ops_dicts.append(op_dict)
 
     return {"ops_dicts": ops_dicts, "title": "Graph"}

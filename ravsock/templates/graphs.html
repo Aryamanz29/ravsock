@@ -25,7 +25,7 @@
             {% for graph in graph_dicts %}
                 <tr>
                     <td>{{ graph.id|title }}</td>
-                    <td>{{ graph.name|title }}</td>
+                    <td><a href="/viz/graph/{{ graph.id }}/">{{ graph.name|title }}</a></td>
                     <td>{{ graph.algorithm|title }}</td>
                     <td>{{ graph.approach}}</td>
                     <td>{{ graph.inputs}}</td>

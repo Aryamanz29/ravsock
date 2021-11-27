@@ -14,8 +14,11 @@
                 <th scope="col">Client ID</th>
                 <th scope="col">Client IP</th>
                 <th scope="col">Status</th>
-                <th scope="col">Client Type</th>
+                <th scope="col">Reporting</th>
+                <th scope="col">FTP Credentials</th>
+                <th scope="col">Context</th>
                 <th scope="col">Connected At</th>
+                <th scope="col">Last Time Active</th>
                 <th scope="col">Disconnected At</th>
                 <th scope="col">Created At</th>
             </tr>
@@ -24,11 +27,14 @@
             {% for client in clients_dicts %}
                 <tr>
                     <th scope="row">{{ client.id }}</th>
-                    <td>{{ client.client_id }}</td>
+                    <td>{{ client.cid }}</td>
                     <td>{{ client.client_ip }}</td>
                     <td>{{ client.status }}</td>
-                    <td>{{ client.type }}</td>
+                    <td>{{ client.reporting }}</td>
+                    <td>{{ client.ftp_credentials }}</td>
+                    <td>{{ client.context }}</td>
                     <td>{{ client.connected_at.strftime('%d-%m-%Y %H:%M:%S') }}</td>
+                    <td>{{ client.last_active_time.strftime('%d-%m-%Y %H:%M:%S') }}</td>
                     <td>{{ client.disconnected_at.strftime('%d-%m-%Y %H:%M:%S') }}</td>
                     <td>{{ client.created_at.strftime('%d-%m-%Y %H:%M:%S') }}</td>
                 </tr>

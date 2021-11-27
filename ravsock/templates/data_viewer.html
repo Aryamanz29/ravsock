@@ -13,7 +13,7 @@
                     
                     {% if data_dict != None %}
 
-                    <h5 class="card-title">Data Id:{{ data_dict.id }}</h5>
+                    <h5 class="card-title">Data ID:{{ data_dict.id }}</h5>
                     <div class="card-text">
                         <div>Dtype : {{ data_dict.dtype }}</div>
                         <div>Filepath : <a href="{{ data_dict.file_path }}">{{ data_dict.file_path }}</a></div>
@@ -23,12 +23,12 @@
 
                     {% else %}
 
-                    <h5 class="card-title">Data Id: N/A</h5>
+                    <h5 class="card-title">Data Id: None</h5>
                     <div class="card-text">
-                        <div>Dtype : N/A</div>
-                        <div>Filepath : N/A </div>
-                        <div>Value : N/A </div>
-                        <div>Created At: N/A</div>
+                        <div>Dtype : None</div>
+                        <div>Filepath : None </div>
+                        <div>Value : None </div>
+                        <div>Created At: None</div>
                     </div>
                     
                     {% endif %}
